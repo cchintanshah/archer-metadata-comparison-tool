@@ -1,5 +1,6 @@
 // ==========================================
 // Archer Comparison Tool - Core Types
+// GUID-Based Matching with CSV Comparison
 // ==========================================
 
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 export enum ComparisonType {
   Module = 'Module',
   Field = 'Field',
+  CalculatedField = 'CalculatedField',
   Layout = 'Layout',
   ValuesList = 'ValuesList',
   ValuesListValue = 'ValuesListValue',
@@ -38,23 +40,24 @@ export enum Severity {
 }
 
 export enum FieldType {
-  Text = 'Text',
-  NumericField = 'NumericField',
-  DateField = 'DateField',
-  ValuesList = 'ValuesList',
-  CrossReference = 'CrossReference',
-  Attachment = 'Attachment',
-  Image = 'Image',
-  ExternalLinks = 'ExternalLinks',
-  UsersGroups = 'UsersGroups',
-  RecordPermissions = 'RecordPermissions',
-  TrackingField = 'TrackingField',
-  SubForm = 'SubForm',
-  RelatedRecords = 'RelatedRecords',
-  History = 'History',
-  SchedulerField = 'SchedulerField',
-  Matrix = 'Matrix',
-  IPAddress = 'IPAddress',
+  Text = 1,
+  NumericField = 2,
+  DateField = 3,
+  ValuesList = 4,
+  CrossReference = 5,
+  Attachment = 6,
+  Image = 7,
+  ExternalLinks = 8,
+  UsersGroups = 9,
+  RecordPermissions = 10,
+  TrackingField = 11,
+  SubForm = 12,
+  RelatedRecords = 13,
+  History = 14,
+  SchedulerField = 15,
+  Matrix = 16,
+  IPAddress = 17,
+  CalculatedField = 21,
 }
 
 export enum ReportType {
@@ -74,11 +77,11 @@ export interface ArcherEnvironment {
   encryptedPassword: string;
 }
 
-// Base Metadata Interface
+// Base Metadata Interface - GUID is the primary identifier
 export interface BaseMetadata {
   id: number;
   name: string;
-  guid: string;
+  guid: string; // PRIMARY IDENTIFIER for matching across environments
   alias?: string;
   description?: string;
 }
@@ -92,18 +95,25 @@ export interface Module extends BaseMetadata {
   fieldCount: number;
 }
 
-// Field
+// Field - Base field with calculated field support
 export interface Field extends BaseMetadata {
-  type: ComparisonType.Field;
+  type: ComparisonType.Field | ComparisonType.CalculatedField;
   moduleId: number;
   moduleName: string;
+  moduleGuid: string;
   fieldType: FieldType;
+  fieldTypeName: string;
   isRequired: boolean;
   isKey: boolean;
   isCalculated: boolean;
   maxLength?: number;
   defaultValue?: string;
   relatedValuesListId?: number;
+  relatedValuesListGuid?: string;
+  // Calculated Field specific properties
+  calculationFormula?: string; // The actual calculation text/formula
+  calculationReturnType?: string;
+  calculationSourceFields?: string[]; // GUIDs of fields used in calculation
 }
 
 // Layout
@@ -111,8 +121,10 @@ export interface Layout extends BaseMetadata {
   type: ComparisonType.Layout;
   moduleId: number;
   moduleName: string;
+  moduleGuid: string;
   isDefault: boolean;
   fieldIds: number[];
+  fieldGuids: string[];
 }
 
 // Values List
@@ -126,10 +138,12 @@ export interface ValuesList extends BaseMetadata {
 export interface ValuesListValue extends BaseMetadata {
   type: ComparisonType.ValuesListValue;
   valuesListId: number;
+  valuesListGuid: string;
   valuesListName: string;
   numericValue: number;
   sortOrder: number;
   parentValueId?: number;
+  parentValueGuid?: string;
   isSelectable: boolean;
 }
 
@@ -138,8 +152,11 @@ export interface DDERule extends BaseMetadata {
   type: ComparisonType.DDERule;
   moduleId: number;
   moduleName: string;
+  moduleGuid: string;
   isEnabled: boolean;
   triggerType: string;
+  triggerFieldGuid?: string;
+  conditionLogic?: string;
   actionsCount: number;
 }
 
@@ -147,8 +164,11 @@ export interface DDERule extends BaseMetadata {
 export interface DDEAction extends BaseMetadata {
   type: ComparisonType.DDEAction;
   ruleId: number;
+  ruleGuid: string;
   ruleName: string;
   actionType: string;
+  targetFieldGuid?: string;
+  setValue?: string;
   order: number;
 }
 
@@ -158,14 +178,18 @@ export interface Report extends BaseMetadata {
   reportType: ReportType;
   moduleId?: number;
   moduleName?: string;
+  moduleGuid?: string;
   isShared: boolean;
   owner: string;
+  filterCriteria?: string;
+  sortOrder?: string;
 }
 
 // Dashboard
 export interface Dashboard extends BaseMetadata {
   type: ComparisonType.Dashboard;
   iViewsCount: number;
+  iViewGuids: string[];
   isShared: boolean;
   owner: string;
 }
@@ -174,6 +198,7 @@ export interface Dashboard extends BaseMetadata {
 export interface Workspace extends BaseMetadata {
   type: ComparisonType.Workspace;
   dashboardsCount: number;
+  dashboardGuids: string[];
   order: number;
 }
 
@@ -182,6 +207,7 @@ export interface IView extends BaseMetadata {
   type: ComparisonType.IView;
   iViewType: string;
   reportId?: number;
+  reportGuid?: string;
   reportName?: string;
 }
 
@@ -191,6 +217,7 @@ export interface Role extends BaseMetadata {
   usersCount: number;
   groupsCount: number;
   isSystemRole: boolean;
+  permissionGuids: string[];
 }
 
 // Security Parameter
@@ -199,6 +226,7 @@ export interface SecurityParameter extends BaseMetadata {
   securityType: string;
   moduleId?: number;
   moduleName?: string;
+  moduleGuid?: string;
 }
 
 // Notification
@@ -206,8 +234,10 @@ export interface Notification extends BaseMetadata {
   type: ComparisonType.Notification;
   moduleId: number;
   moduleName: string;
+  moduleGuid: string;
   isEnabled: boolean;
   triggerType: string;
+  templateContent?: string;
 }
 
 // Data Feed
@@ -216,8 +246,10 @@ export interface DataFeed extends BaseMetadata {
   feedType: string;
   targetModuleId: number;
   targetModuleName: string;
+  targetModuleGuid: string;
   isEnabled: boolean;
   schedule?: string;
+  fieldMappings?: string;
 }
 
 // Schedule
@@ -225,6 +257,7 @@ export interface Schedule extends BaseMetadata {
   type: ComparisonType.Schedule;
   scheduleType: string;
   frequency: string;
+  cronExpression?: string;
   isEnabled: boolean;
   lastRunDate?: string;
   nextRunDate?: string;
@@ -249,26 +282,57 @@ export type MetadataItem =
   | DataFeed 
   | Schedule;
 
-// Comparison Result
+// Property Difference for detailed mismatch tracking
+export interface PropertyDifference {
+  propertyName: string;
+  sourceValue: string;
+  targetValue: string;
+  isCalculationDifference?: boolean;
+}
+
+// Comparison Result - Enhanced with GUID matching
 export interface ComparisonResult {
   id: string;
   comparisonType: ComparisonType;
   itemName: string;
-  itemIdentifier: string;
+  itemGuid: string; // The GUID used for matching
   parentName?: string;
-  propertyName?: string;
-  sourceValue?: string;
-  targetValue?: string;
+  parentGuid?: string;
   status: ComparisonStatus;
   severity: Severity;
   sourceItem?: MetadataItem;
   targetItem?: MetadataItem;
+  propertyDifferences?: PropertyDifference[]; // Detailed differences for mismatches
+  csvSourceRow?: string; // CSV representation for verification
+  csvTargetRow?: string;
+}
+
+// Categorized Results for UI Display
+export interface CategorizedResults {
+  calculatedFields: ComparisonResult[];
+  fields: ComparisonResult[];
+  modules: ComparisonResult[];
+  layouts: ComparisonResult[];
+  valuesLists: ComparisonResult[];
+  valuesListValues: ComparisonResult[];
+  ddeRules: ComparisonResult[];
+  ddeActions: ComparisonResult[];
+  reports: ComparisonResult[];
+  dashboards: ComparisonResult[];
+  workspaces: ComparisonResult[];
+  iViews: ComparisonResult[];
+  roles: ComparisonResult[];
+  securityParameters: ComparisonResult[];
+  notifications: ComparisonResult[];
+  dataFeeds: ComparisonResult[];
+  schedules: ComparisonResult[];
 }
 
 // Collection Options
 export interface CollectionOptions {
   includeModules: boolean;
   includeFields: boolean;
+  includeCalculatedFields: boolean;
   includeLayouts: boolean;
   includeValuesLists: boolean;
   includeValuesListValues: boolean;
@@ -284,13 +348,16 @@ export interface CollectionOptions {
   includeDataFeeds: boolean;
   includeSchedules: boolean;
   selectedModuleIds: number[];
+  selectedModuleGuids: string[];
 }
 
 // Collected Metadata
 export interface CollectedMetadata {
   environment: ArcherEnvironment;
+  collectedAt: string;
   modules: Module[];
   fields: Field[];
+  calculatedFields: Field[];
   layouts: Layout[];
   valuesLists: ValuesList[];
   valuesListValues: ValuesListValue[];
@@ -307,6 +374,15 @@ export interface CollectedMetadata {
   schedules: Schedule[];
 }
 
+// CSV Export Row for comparison verification
+export interface CSVRow {
+  guid: string;
+  type: ComparisonType;
+  name: string;
+  properties: string; // JSON stringified properties
+  calculationFormula?: string;
+}
+
 // Comparison Summary
 export interface ComparisonSummary {
   totalItems: number;
@@ -314,6 +390,11 @@ export interface ComparisonSummary {
   mismatchedCount: number;
   missingInSourceCount: number;
   missingInTargetCount: number;
+  calculatedFieldStats: {
+    matched: number;
+    mismatched: number;
+    formulaDifferences: number;
+  };
   byType: Record<ComparisonType, {
     total: number;
     matched: number;
@@ -321,6 +402,14 @@ export interface ComparisonSummary {
     missingInSource: number;
     missingInTarget: number;
   }>;
+}
+
+// Tab Results for UI
+export interface TabResults {
+  matched: CategorizedResults;
+  mismatched: CategorizedResults;
+  notInSource: CategorizedResults;
+  notInTarget: CategorizedResults;
 }
 
 // Helper function to create new environment
@@ -336,11 +425,12 @@ export function getDefaultCollectionOptions(): CollectionOptions {
   return {
     includeModules: true,
     includeFields: true,
+    includeCalculatedFields: true,
     includeLayouts: true,
     includeValuesLists: true,
     includeValuesListValues: false,
     includeDDERules: true,
-    includeDDEActions: false,
+    includeDDEActions: true,
     includeReports: true,
     includeDashboards: true,
     includeWorkspaces: true,
@@ -351,5 +441,39 @@ export function getDefaultCollectionOptions(): CollectionOptions {
     includeDataFeeds: true,
     includeSchedules: true,
     selectedModuleIds: [],
+    selectedModuleGuids: [],
+  };
+}
+
+// Create empty categorized results
+export function createEmptyCategorizedResults(): CategorizedResults {
+  return {
+    calculatedFields: [],
+    fields: [],
+    modules: [],
+    layouts: [],
+    valuesLists: [],
+    valuesListValues: [],
+    ddeRules: [],
+    ddeActions: [],
+    reports: [],
+    dashboards: [],
+    workspaces: [],
+    iViews: [],
+    roles: [],
+    securityParameters: [],
+    notifications: [],
+    dataFeeds: [],
+    schedules: [],
+  };
+}
+
+// Create empty tab results
+export function createEmptyTabResults(): TabResults {
+  return {
+    matched: createEmptyCategorizedResults(),
+    mismatched: createEmptyCategorizedResults(),
+    notInSource: createEmptyCategorizedResults(),
+    notInTarget: createEmptyCategorizedResults(),
   };
 }

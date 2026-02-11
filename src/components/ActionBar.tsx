@@ -1,185 +1,194 @@
 // ==========================================
 // Action Bar Component
+// Compare and Export functionality
 // ==========================================
 
-import { Settings, Play, Download, Loader2 } from 'lucide-react';
-import { useAppStore } from '@/store/appStore';
-import { collectMetadata } from '@/services/metadataCollector';
-import { compareMetadata, generateSummary } from '@/services/comparisonEngine';
-import { exportToExcel } from '@/services/excelExporter';
-import { cn } from '@/utils/cn';
+import React from 'react';
+import { useAppStore } from '../store/appStore';
+import { compareEnvironments } from '../services/comparisonEngine';
+import { exportToCSV, exportToText } from '../services/excelExporter';
+import { collectMetadata, CollectionProgress } from '../services/metadataCollector';
 
-export function ActionBar() {
+export const ActionBar: React.FC = () => {
   const {
-    environments,
-    sourceEnvironmentId,
-    targetEnvironmentId,
+    sourceEnvironment,
+    targetEnvironment,
     collectionOptions,
-    isComparing,
-    comparisonProgress,
-    comparisonStatus,
-    results,
-    summary,
+    isLoading,
+    loadingMessage,
+    loadingProgress,
+    comparisonResults,
+    comparisonSummary,
+    tabResults,
+    setLoading,
+    setSourceMetadata,
+    setTargetMetadata,
+    setComparisonResults,
+    setError,
     setShowCollectionDialog,
-    setComparing,
-    setComparisonProgress,
-    setResults,
   } = useAppStore();
 
-  const sourceEnv = environments.find(e => e.id === sourceEnvironmentId);
-  const targetEnv = environments.find(e => e.id === targetEnvironmentId);
-  const canCompare = sourceEnv && targetEnv && !isComparing;
-  const hasResults = results.length > 0 && summary;
+  const canCompare = sourceEnvironment && targetEnvironment && 
+    sourceEnvironment.id !== targetEnvironment.id;
 
   const handleCompare = async () => {
-    if (!sourceEnv || !targetEnv) return;
-
-    setComparing(true);
-    setComparisonProgress(0, 'Initializing comparison...');
+    if (!sourceEnvironment || !targetEnvironment) return;
 
     try {
-      // Collect from source
-      setComparisonProgress(10, `Connecting to ${sourceEnv.displayName}...`);
-      const sourceMetadata = await collectMetadata(
-        sourceEnv,
-        collectionOptions,
-        true,
-        (msg, prog) => setComparisonProgress(10 + (prog * 0.35), msg)
-      );
+      setLoading(true, 'Initializing...', 0);
+      setError(null);
 
-      // Collect from target
-      setComparisonProgress(50, `Connecting to ${targetEnv.displayName}...`);
-      const targetMetadata = await collectMetadata(
-        targetEnv,
-        collectionOptions,
-        false,
-        (msg, prog) => setComparisonProgress(50 + (prog * 0.35), msg)
-      );
+      // Progress callback
+      const onProgress = (progress: CollectionProgress) => {
+        setLoading(true, `${progress.currentStep}: ${progress.currentItem}`, progress.progress);
+      };
 
-      // Compare
-      setComparisonProgress(90, 'Analyzing differences...');
+      // Collect source metadata
+      setLoading(true, 'Collecting from source environment...', 10);
+      const sourceData = await collectMetadata(
+        sourceEnvironment,
+        collectionOptions,
+        onProgress,
+        true
+      );
+      setSourceMetadata(sourceData);
+
+      // Collect target metadata
+      setLoading(true, 'Collecting from target environment...', 50);
+      const targetData = await collectMetadata(
+        targetEnvironment,
+        collectionOptions,
+        onProgress,
+        false
+      );
+      setTargetMetadata(targetData);
+
+      // Run comparison
+      setLoading(true, 'Comparing metadata using GUID matching...', 80);
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const comparisonResults = compareMetadata(sourceMetadata, targetMetadata);
-      const comparisonSummary = generateSummary(comparisonResults);
+      const { results, tabResults, summary } = compareEnvironments(sourceData, targetData);
 
-      setResults(comparisonResults, comparisonSummary);
+      setLoading(true, 'Finalizing results...', 95);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      setComparisonResults(results, tabResults, summary);
+      setLoading(false);
+
     } catch (error) {
-      console.error('Comparison failed:', error);
-      setComparing(false);
-      setComparisonProgress(0, 'Comparison failed. Please try again.');
+      console.error('Comparison error:', error);
+      setError(error instanceof Error ? error.message : 'Comparison failed');
+      setLoading(false);
     }
   };
 
-  const handleExport = () => {
-    if (!summary || !sourceEnv || !targetEnv) return;
+  const handleExportCSV = () => {
+    if (comparisonResults.length === 0 || !comparisonSummary) return;
+    exportToCSV(
+      comparisonResults,
+      comparisonSummary,
+      sourceEnvironment?.displayName || 'Source',
+      targetEnvironment?.displayName || 'Target'
+    );
+  };
 
-    exportToExcel({
-      sourceName: sourceEnv.displayName,
-      targetName: targetEnv.displayName,
-      results,
-      summary,
-    });
+  const handleExportText = () => {
+    if (!comparisonSummary) return;
+    exportToText(
+      tabResults,
+      comparisonSummary,
+      sourceEnvironment?.displayName || 'Source',
+      targetEnvironment?.displayName || 'Target'
+    );
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div className="flex flex-wrap items-center gap-4">
-        {/* Configure Button */}
-        <button
-          onClick={() => setShowCollectionDialog(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-          Configure Collection
-        </button>
+    <div className="bg-white border-b border-gray-200 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          {/* Collection Options Button */}
+          <button
+            onClick={() => setShowCollectionDialog(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span>Configure Collection</span>
+          </button>
 
-        {/* Compare Button */}
-        <button
-          onClick={handleCompare}
-          disabled={!canCompare}
-          className={cn(
-            "flex items-center gap-2 px-6 py-2.5 font-medium rounded-lg transition-all",
-            canCompare
-              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-          )}
-        >
-          {isComparing ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Play className="w-5 h-5" />
-          )}
-          {isComparing ? 'Comparing...' : 'Compare Environments'}
-        </button>
+          {/* Compare Button */}
+          <button
+            onClick={handleCompare}
+            disabled={!canCompare || isLoading}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors
+              ${canCompare && !isLoading
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              }`}
+          >
+            {isLoading ? (
+              <>
+                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Comparing...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <span>Compare Environments</span>
+              </>
+            )}
+          </button>
+        </div>
 
-        {/* Export Button */}
-        <button
-          onClick={handleExport}
-          disabled={!hasResults}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 font-medium rounded-lg transition-colors",
-            hasResults
-              ? "bg-green-600 text-white hover:bg-green-700"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-          )}
-        >
-          <Download className="w-5 h-5" />
-          Export to Excel
-        </button>
-
-        {/* Progress Indicator */}
-        {isComparing && (
-          <div className="flex-1 ml-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                <div
-                  className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${comparisonProgress}%` }}
-                />
-              </div>
-              <span className="text-sm text-gray-600 whitespace-nowrap">
-                {Math.round(comparisonProgress)}%
-              </span>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">{comparisonStatus}</p>
+        {/* Export Buttons */}
+        {comparisonResults.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Export CSV</span>
+            </button>
+            <button
+              onClick={handleExportText}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Export Report</span>
+            </button>
           </div>
         )}
       </div>
 
-      {/* Selected Metadata Types Summary */}
-      <div className="mt-4 pt-4 border-t border-gray-100">
-        <div className="flex flex-wrap gap-2">
-          <span className="text-sm text-gray-500">Collecting:</span>
-          {collectionOptions.includeModules && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Modules</span>
-          )}
-          {collectionOptions.includeFields && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Fields</span>
-          )}
-          {collectionOptions.includeLayouts && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Layouts</span>
-          )}
-          {collectionOptions.includeValuesLists && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Values Lists</span>
-          )}
-          {collectionOptions.includeDDERules && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">DDE Rules</span>
-          )}
-          {collectionOptions.includeReports && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Reports</span>
-          )}
-          {collectionOptions.includeDashboards && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Dashboards</span>
-          )}
-          {collectionOptions.includeRoles && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Roles</span>
-          )}
-          {collectionOptions.includeDataFeeds && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Data Feeds</span>
-          )}
+      {/* Progress Bar */}
+      {isLoading && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-gray-600">{loadingMessage}</span>
+            <span className="text-sm text-gray-600">{loadingProgress}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${loadingProgress}%` }}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
-}
+};
+
+export default ActionBar;

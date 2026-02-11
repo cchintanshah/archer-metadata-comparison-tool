@@ -1,383 +1,339 @@
 // ==========================================
 // Results Tabs Component
+// 4 Tabs: Matched, Mismatched, Not in Source, Not in Target
+// Collapsible categories within each tab
 // ==========================================
 
-import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, Filter } from 'lucide-react';
-import { useAppStore } from '@/store/appStore';
-import { ComparisonStatus, ComparisonType, Severity } from '@/types';
-import { cn } from '@/utils/cn';
+import React, { useState } from 'react';
+import {
+  ComparisonResult,
+  TabResults,
+  CategorizedResults,
+  ComparisonSummary,
+  Severity,
+} from '../types';
+import { useAppStore } from '../store/appStore';
 
-type TabType = 'notInTarget' | 'notInSource' | 'mismatches' | 'matched';
+// Icons
+const ChevronDown = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
 
-interface TabConfig {
-  id: TabType;
-  label: string;
-  status: ComparisonStatus;
-  bgColor: string;
-  borderColor: string;
-  textColor: string;
+const ChevronRight = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
+
+const CheckCircle = () => (
+  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+  </svg>
+);
+
+const ExclamationCircle = () => (
+  <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+  </svg>
+);
+
+const XCircle = () => (
+  <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+  </svg>
+);
+
+interface CollapsibleCategoryProps {
+  title: string;
+  items: ComparisonResult[];
+  defaultExpanded?: boolean;
+  showDifferences?: boolean;
 }
 
-export function ResultsTabs() {
-  const { 
-    results, 
-    activeTab, 
-    setActiveTab, 
-    environments,
-    sourceEnvironmentId,
-    targetEnvironmentId 
-  } = useAppStore();
-  
-  const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState<ComparisonType | 'all'>('all');
-  const [sortColumn, setSortColumn] = useState<string>('itemName');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+const CollapsibleCategory: React.FC<CollapsibleCategoryProps> = ({
+  title,
+  items,
+  defaultExpanded = false,
+  showDifferences = false,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  const sourceEnv = environments.find(e => e.id === sourceEnvironmentId);
-  const targetEnv = environments.find(e => e.id === targetEnvironmentId);
+  if (items.length === 0) return null;
 
-  const tabs: TabConfig[] = [
-    {
-      id: 'notInTarget',
-      label: `Not in ${targetEnv?.displayName || 'Target'}`,
-      status: ComparisonStatus.MissingInTarget,
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-300',
-      textColor: 'text-red-700',
-    },
-    {
-      id: 'notInSource',
-      label: `Not in ${sourceEnv?.displayName || 'Source'}`,
-      status: ComparisonStatus.MissingInSource,
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-300',
-      textColor: 'text-orange-700',
-    },
-    {
-      id: 'mismatches',
-      label: 'Mismatches',
-      status: ComparisonStatus.Mismatch,
-      bgColor: 'bg-yellow-50',
-      borderColor: 'border-yellow-300',
-      textColor: 'text-yellow-700',
-    },
-    {
-      id: 'matched',
-      label: 'Matched',
-      status: ComparisonStatus.Match,
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-300',
-      textColor: 'text-green-700',
-    },
-  ];
-
-  // Get filtered results for each tab
-  const tabResults = useMemo(() => {
-    const counts: Record<TabType, number> = {
-      notInTarget: 0,
-      notInSource: 0,
-      mismatches: 0,
-      matched: 0,
-    };
-
-    const processedItems = new Set<string>();
-
-    for (const result of results) {
-      const key = `${result.comparisonType}::${result.itemIdentifier}::${result.status}`;
-      if (result.status === ComparisonStatus.Mismatch) {
-        // Count unique items for mismatches
-        const itemKey = `${result.comparisonType}::${result.itemIdentifier}`;
-        if (!processedItems.has(itemKey)) {
-          processedItems.add(itemKey);
-          counts.mismatches++;
-        }
-      } else if (!processedItems.has(key)) {
-        processedItems.add(key);
-        switch (result.status) {
-          case ComparisonStatus.MissingInTarget:
-            counts.notInTarget++;
-            break;
-          case ComparisonStatus.MissingInSource:
-            counts.notInSource++;
-            break;
-          case ComparisonStatus.Match:
-            counts.matched++;
-            break;
-        }
-      }
+  const getSeverityIcon = (severity: Severity) => {
+    switch (severity) {
+      case Severity.Critical:
+        return <XCircle />;
+      case Severity.Warning:
+        return <ExclamationCircle />;
+      default:
+        return <CheckCircle />;
     }
-
-    return counts;
-  }, [results]);
-
-  // Filter and sort results for current tab
-  const currentTabConfig = tabs.find(t => t.id === activeTab)!;
-  
-  const filteredResults = useMemo(() => {
-    let filtered = results.filter(r => r.status === currentTabConfig.status);
-
-    // Apply search filter
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(r =>
-        r.itemName.toLowerCase().includes(search) ||
-        (r.parentName?.toLowerCase().includes(search)) ||
-        (r.propertyName?.toLowerCase().includes(search)) ||
-        r.comparisonType.toLowerCase().includes(search)
-      );
-    }
-
-    // Apply type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(r => r.comparisonType === typeFilter);
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      let aVal: string | undefined;
-      let bVal: string | undefined;
-
-      switch (sortColumn) {
-        case 'type':
-          aVal = a.comparisonType;
-          bVal = b.comparisonType;
-          break;
-        case 'parent':
-          aVal = a.parentName || '';
-          bVal = b.parentName || '';
-          break;
-        case 'property':
-          aVal = a.propertyName || '';
-          bVal = b.propertyName || '';
-          break;
-        case 'severity':
-          aVal = a.severity;
-          bVal = b.severity;
-          break;
-        default:
-          aVal = a.itemName;
-          bVal = b.itemName;
-      }
-
-      const comparison = (aVal || '').localeCompare(bVal || '');
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-
-    return filtered;
-  }, [results, currentTabConfig.status, searchTerm, typeFilter, sortColumn, sortDirection]);
-
-  // Get unique types for filter
-  const availableTypes = useMemo(() => {
-    const types = new Set<ComparisonType>();
-    results
-      .filter(r => r.status === currentTabConfig.status)
-      .forEach(r => types.add(r.comparisonType));
-    return Array.from(types).sort();
-  }, [results, currentTabConfig.status]);
-
-  const handleSort = (column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
-
-  const SortIcon = ({ column }: { column: string }) => {
-    if (sortColumn !== column) return null;
-    return sortDirection === 'asc' ? 
-      <ChevronUp className="w-4 h-4" /> : 
-      <ChevronDown className="w-4 h-4" />;
   };
 
   const getSeverityBadge = (severity: Severity) => {
-    const styles = {
-      [Severity.Critical]: 'bg-red-100 text-red-700',
-      [Severity.Warning]: 'bg-yellow-100 text-yellow-700',
-      [Severity.Info]: 'bg-blue-100 text-blue-700',
+    const colors = {
+      [Severity.Critical]: 'bg-red-100 text-red-800',
+      [Severity.Warning]: 'bg-yellow-100 text-yellow-800',
+      [Severity.Info]: 'bg-blue-100 text-blue-800',
     };
-    return (
-      <span className={cn('px-2 py-0.5 rounded text-xs font-medium', styles[severity])}>
-        {severity}
-      </span>
-    );
+    return colors[severity] || colors[Severity.Info];
   };
 
-  if (results.length === 0) {
-    return null;
+  return (
+    <div className="border border-gray-200 rounded-lg mb-2 overflow-hidden">
+      {/* Category Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          {isExpanded ? <ChevronDown /> : <ChevronRight />}
+          <span className="font-medium text-gray-700">{title}</span>
+          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-sm">
+            {items.length}
+          </span>
+        </div>
+      </button>
+
+      {/* Category Items */}
+      {isExpanded && (
+        <div className="divide-y divide-gray-100">
+          {items.map((item) => (
+            <div key={item.id} className="p-3 hover:bg-gray-50">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {getSeverityIcon(item.severity)}
+                    <span className="font-medium text-gray-900">{item.itemName}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs ${getSeverityBadge(item.severity)}`}>
+                      {item.severity}
+                    </span>
+                  </div>
+                  
+                  {/* GUID */}
+                  <div className="mt-1 text-xs text-gray-500 font-mono">
+                    GUID: {item.itemGuid}
+                  </div>
+                  
+                  {/* Parent */}
+                  {item.parentName && (
+                    <div className="mt-1 text-sm text-gray-600">
+                      Parent: {item.parentName}
+                    </div>
+                  )}
+
+                  {/* Property Differences */}
+                  {showDifferences && item.propertyDifferences && item.propertyDifferences.length > 0 && (
+                    <div className="mt-2 bg-yellow-50 rounded p-2">
+                      <div className="text-xs font-medium text-yellow-800 mb-1">
+                        Differences ({item.propertyDifferences.length}):
+                      </div>
+                      <div className="space-y-1">
+                        {item.propertyDifferences.map((diff, idx) => (
+                          <div key={idx} className="text-xs">
+                            <span className="font-medium text-gray-700">{diff.propertyName}:</span>
+                            {diff.isCalculationDifference ? (
+                              <div className="mt-1 grid grid-cols-2 gap-2">
+                                <div className="bg-red-50 p-1 rounded">
+                                  <div className="text-red-700 font-medium">Source:</div>
+                                  <code className="text-xs break-all">{diff.sourceValue}</code>
+                                </div>
+                                <div className="bg-green-50 p-1 rounded">
+                                  <div className="text-green-700 font-medium">Target:</div>
+                                  <code className="text-xs break-all">{diff.targetValue}</code>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="ml-1">
+                                <span className="text-red-600">"{diff.sourceValue}"</span>
+                                <span className="mx-1">→</span>
+                                <span className="text-green-600">"{diff.targetValue}"</span>
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface TabContentProps {
+  categories: CategorizedResults;
+  showDifferences?: boolean;
+}
+
+const TabContent: React.FC<TabContentProps> = ({ categories, showDifferences = false }) => {
+  const categoryOrder: { key: keyof CategorizedResults; title: string }[] = [
+    { key: 'calculatedFields', title: '📊 Calculated Fields' },
+    { key: 'fields', title: '📝 Fields' },
+    { key: 'modules', title: '📦 Modules' },
+    { key: 'layouts', title: '🎨 Layouts' },
+    { key: 'valuesLists', title: '📋 Values Lists' },
+    { key: 'valuesListValues', title: '📑 Values List Values' },
+    { key: 'ddeRules', title: '⚡ DDE Rules' },
+    { key: 'ddeActions', title: '🎯 DDE Actions' },
+    { key: 'reports', title: '📈 Reports' },
+    { key: 'dashboards', title: '📊 Dashboards' },
+    { key: 'workspaces', title: '🏢 Workspaces' },
+    { key: 'iViews', title: '👁️ iViews' },
+    { key: 'roles', title: '👤 Roles' },
+    { key: 'securityParameters', title: '🔒 Security Parameters' },
+    { key: 'notifications', title: '🔔 Notifications' },
+    { key: 'dataFeeds', title: '📥 Data Feeds' },
+    { key: 'schedules', title: '📅 Schedules' },
+  ];
+
+  const totalItems = Object.values(categories).reduce((sum, arr) => sum + arr.length, 0);
+
+  if (totalItems === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+        <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p>No items in this category</p>
+      </div>
+    );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div className="space-y-2">
+      {categoryOrder.map(({ key, title }) => (
+        <CollapsibleCategory
+          key={key}
+          title={title}
+          items={categories[key]}
+          defaultExpanded={key === 'calculatedFields' || key === 'fields'}
+          showDifferences={showDifferences}
+        />
+      ))}
+    </div>
+  );
+};
+
+interface ResultsTabsProps {
+  tabResults: TabResults;
+  summary: ComparisonSummary;
+}
+
+type TabKey = 'matched' | 'mismatched' | 'notInSource' | 'notInTarget';
+
+export const ResultsTabs: React.FC<ResultsTabsProps> = ({ tabResults, summary }) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('notInTarget');
+  const { sourceEnvironment, targetEnvironment } = useAppStore();
+
+  const sourceName = sourceEnvironment?.displayName || 'Source';
+  const targetName = targetEnvironment?.displayName || 'Target';
+
+  const tabs: { key: TabKey; label: string; count: number; color: string; bgColor: string }[] = [
+    { 
+      key: 'matched', 
+      label: 'Matched', 
+      count: summary.matchedCount,
+      color: 'text-green-600',
+      bgColor: 'bg-green-50 border-green-200',
+    },
+    { 
+      key: 'mismatched', 
+      label: 'Mismatched', 
+      count: summary.mismatchedCount,
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-50 border-yellow-200',
+    },
+    { 
+      key: 'notInSource', 
+      label: `Not in ${sourceName}`, 
+      count: summary.missingInSourceCount,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50 border-orange-200',
+    },
+    { 
+      key: 'notInTarget', 
+      label: `Not in ${targetName}`, 
+      count: summary.missingInTargetCount,
+      color: 'text-red-600',
+      bgColor: 'bg-red-50 border-red-200',
+    },
+  ];
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Tab Headers */}
-      <div className="flex border-b border-gray-200 overflow-x-auto">
-        {tabs.map(tab => (
+      <div className="flex border-b border-gray-200">
+        {tabs.map((tab) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex-1 min-w-[120px] px-4 py-3 text-sm font-medium transition-colors',
-              'border-b-2 -mb-px whitespace-nowrap',
-              activeTab === tab.id
-                ? `${tab.bgColor} ${tab.borderColor} ${tab.textColor}`
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            )}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors relative
+              ${activeTab === tab.key 
+                ? `${tab.color} border-b-2 ${tab.key === 'matched' ? 'border-green-500' : tab.key === 'mismatched' ? 'border-yellow-500' : tab.key === 'notInSource' ? 'border-orange-500' : 'border-red-500'}` 
+                : 'text-gray-500 hover:text-gray-700'
+              }`}
           >
-            {tab.label}
-            <span className={cn(
-              'ml-2 px-2 py-0.5 rounded-full text-xs',
-              activeTab === tab.id ? 'bg-white/50' : 'bg-gray-100'
-            )}>
-              {tabResults[tab.id]}
+            <span>{tab.label}</span>
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs
+              ${activeTab === tab.key ? tab.bgColor : 'bg-gray-100'}`}>
+              {tab.count}
             </span>
           </button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="p-4 border-b border-gray-200 flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[200px] relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search items..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-400" />
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as ComparisonType | 'all')}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Types</option>
-            {availableTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Results Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className={cn('text-sm', currentTabConfig.bgColor)}>
-            <tr>
-              <th 
-                className="text-left px-4 py-3 font-medium cursor-pointer hover:bg-black/5"
-                onClick={() => handleSort('type')}
-              >
-                <div className="flex items-center gap-1">
-                  Type <SortIcon column="type" />
-                </div>
-              </th>
-              <th 
-                className="text-left px-4 py-3 font-medium cursor-pointer hover:bg-black/5"
-                onClick={() => handleSort('parent')}
-              >
-                <div className="flex items-center gap-1">
-                  Parent <SortIcon column="parent" />
-                </div>
-              </th>
-              <th 
-                className="text-left px-4 py-3 font-medium cursor-pointer hover:bg-black/5"
-                onClick={() => handleSort('itemName')}
-              >
-                <div className="flex items-center gap-1">
-                  Item Name <SortIcon column="itemName" />
-                </div>
-              </th>
-              {activeTab === 'mismatches' && (
-                <>
-                  <th 
-                    className="text-left px-4 py-3 font-medium cursor-pointer hover:bg-black/5"
-                    onClick={() => handleSort('property')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Property <SortIcon column="property" />
-                    </div>
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium">
-                    {sourceEnv?.displayName || 'Source'} Value
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium">
-                    {targetEnv?.displayName || 'Target'} Value
-                  </th>
-                </>
-              )}
-              <th 
-                className="text-left px-4 py-3 font-medium cursor-pointer hover:bg-black/5"
-                onClick={() => handleSort('severity')}
-              >
-                <div className="flex items-center gap-1">
-                  Severity <SortIcon column="severity" />
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredResults.length === 0 ? (
-              <tr>
-                <td colSpan={activeTab === 'mismatches' ? 7 : 4} className="px-4 py-8 text-center text-gray-500">
-                  No results found
-                </td>
-              </tr>
-            ) : (
-              filteredResults.slice(0, 100).map((result) => (
-                <tr 
-                  key={result.id} 
-                  className={cn(
-                    'border-b border-gray-100 hover:bg-gray-50 transition-colors',
-                    result.severity === Severity.Critical && 'bg-red-50/30'
-                  )}
-                >
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
-                      {result.comparisonType}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-sm">
-                    {result.parentName || '-'}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {result.itemName}
-                  </td>
-                  {activeTab === 'mismatches' && (
-                    <>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {result.propertyName || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <code className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-                          {result.sourceValue || '-'}
-                        </code>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <code className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
-                          {result.targetValue || '-'}
-                        </code>
-                      </td>
-                    </>
-                  )}
-                  <td className="px-4 py-3">
-                    {getSeverityBadge(result.severity)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        {filteredResults.length > 100 && (
-          <div className="px-4 py-3 bg-gray-50 text-center text-sm text-gray-500">
-            Showing first 100 of {filteredResults.length} results. Export to Excel for full data.
-          </div>
+      {/* Tab Content */}
+      <div className="p-4 max-h-[600px] overflow-y-auto">
+        {activeTab === 'matched' && (
+          <TabContent categories={tabResults.matched} />
+        )}
+        {activeTab === 'mismatched' && (
+          <TabContent categories={tabResults.mismatched} showDifferences />
+        )}
+        {activeTab === 'notInSource' && (
+          <TabContent categories={tabResults.notInSource} />
+        )}
+        {activeTab === 'notInTarget' && (
+          <TabContent categories={tabResults.notInTarget} />
         )}
       </div>
+
+      {/* Calculated Fields Summary */}
+      {summary.calculatedFieldStats && (
+        <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Calculated Fields Summary</h4>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-green-100 rounded p-2">
+              <div className="text-lg font-bold text-green-600">
+                {summary.calculatedFieldStats.matched}
+              </div>
+              <div className="text-xs text-green-700">Matched</div>
+            </div>
+            <div className="bg-yellow-100 rounded p-2">
+              <div className="text-lg font-bold text-yellow-600">
+                {summary.calculatedFieldStats.mismatched}
+              </div>
+              <div className="text-xs text-yellow-700">Mismatched</div>
+            </div>
+            <div className="bg-red-100 rounded p-2">
+              <div className="text-lg font-bold text-red-600">
+                {summary.calculatedFieldStats.formulaDifferences}
+              </div>
+              <div className="text-xs text-red-700">Formula Diffs</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default ResultsTabs;

@@ -1,196 +1,144 @@
 // ==========================================
-// Metadata Collector - Orchestrates Data Collection
+// Metadata Collector Service
+// Orchestrates data collection from Archer environments
 // ==========================================
 
 import {
   ArcherEnvironment,
   CollectedMetadata,
   CollectionOptions,
-} from '@/types';
-import {
-  generateModules,
-  generateFields,
-  generateLayouts,
-  generateValuesLists,
-  generateValuesListValues,
-  generateDDERules,
-  generateDDEActions,
-  generateReports,
-  generateDashboards,
-  generateWorkspaces,
-  generateIViews,
-  generateRoles,
-  generateSecurityParameters,
-  generateNotifications,
-  generateDataFeeds,
-  generateSchedules,
-} from './mockDataService';
+} from '../types';
+import { generateMockMetadata } from './mockDataService';
 
-export type ProgressCallback = (message: string, progress: number) => void;
+export interface CollectionProgress {
+  currentStep: string;
+  currentItem: string;
+  progress: number;
+  totalSteps: number;
+  currentStepNumber: number;
+}
 
-// Simulate API delay
+export type ProgressCallback = (progress: CollectionProgress) => void;
+
+/**
+ * Simulate async delay for mock data generation
+ */
 async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Collect metadata from an environment
+/**
+ * Collect metadata from an Archer environment
+ * Uses mock data service in development mode
+ */
 export async function collectMetadata(
   environment: ArcherEnvironment,
   options: CollectionOptions,
-  isSource: boolean,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  isSource: boolean = true
 ): Promise<CollectedMetadata> {
-  const metadata: CollectedMetadata = {
-    environment,
-    modules: [],
-    fields: [],
-    layouts: [],
-    valuesLists: [],
-    valuesListValues: [],
-    ddeRules: [],
-    ddeActions: [],
-    reports: [],
-    dashboards: [],
-    workspaces: [],
-    iViews: [],
-    roles: [],
-    securityParameters: [],
-    notifications: [],
-    dataFeeds: [],
-    schedules: [],
-  };
+  const steps = [
+    { name: 'Connecting', item: environment.displayName },
+    { name: 'Collecting Modules', item: 'Modules' },
+    { name: 'Collecting Fields', item: 'Fields' },
+    { name: 'Collecting Calculated Fields', item: 'Calculated Fields' },
+    { name: 'Collecting Layouts', item: 'Layouts' },
+    { name: 'Collecting Values Lists', item: 'Values Lists' },
+    { name: 'Collecting DDE Rules', item: 'DDE Rules' },
+    { name: 'Collecting DDE Actions', item: 'DDE Actions' },
+    { name: 'Collecting Reports', item: 'Reports' },
+    { name: 'Collecting Dashboards', item: 'Dashboards' },
+    { name: 'Collecting Other Metadata', item: 'Roles, Notifications, etc.' },
+    { name: 'Finalizing', item: 'Processing data' },
+  ];
 
-  const totalSteps = Object.values(options).filter(v => v === true).length;
-  let currentStep = 0;
-
-  const reportProgress = (message: string) => {
-    currentStep++;
-    const progress = Math.round((currentStep / totalSteps) * 100);
-    onProgress?.(message, progress);
-  };
-
-  // Collect modules (always needed for module-specific items)
-  if (options.includeModules || options.includeFields || options.includeLayouts || 
-      options.includeDDERules || options.includeNotifications) {
-    await delay(300 + Math.random() * 200);
-    metadata.modules = generateModules(10, isSource);
-    
-    // Filter by selected modules if specified
-    if (options.selectedModuleIds.length > 0) {
-      metadata.modules = metadata.modules.filter(m => 
-        options.selectedModuleIds.includes(m.id)
-      );
+  // Simulate progress for each step
+  for (let i = 0; i < steps.length; i++) {
+    if (onProgress) {
+      onProgress({
+        currentStep: steps[i].name,
+        currentItem: steps[i].item,
+        progress: Math.round((i / steps.length) * 100),
+        totalSteps: steps.length,
+        currentStepNumber: i + 1,
+      });
     }
-    
-    if (options.includeModules) {
-      reportProgress(`Collecting modules from ${environment.displayName}...`);
-    }
+    await delay(200 + Math.random() * 300);
   }
 
-  // Collect fields
-  if (options.includeFields) {
-    await delay(400 + Math.random() * 300);
-    metadata.fields = generateFields(metadata.modules, isSource);
-    reportProgress(`Collecting fields from ${environment.displayName}...`);
+  // Generate mock data with appropriate options
+  const metadata = generateMockMetadata(environment, {
+    isSource,
+    introduceMismatches: !isSource,
+    introduceFormulaDifferences: !isSource,
+  });
+
+  // Filter based on collection options
+  if (!options.includeModules) metadata.modules = [];
+  if (!options.includeFields) metadata.fields = [];
+  if (!options.includeCalculatedFields) metadata.calculatedFields = [];
+  if (!options.includeLayouts) metadata.layouts = [];
+  if (!options.includeValuesLists) metadata.valuesLists = [];
+  if (!options.includeValuesListValues) metadata.valuesListValues = [];
+  if (!options.includeDDERules) metadata.ddeRules = [];
+  if (!options.includeDDEActions) metadata.ddeActions = [];
+  if (!options.includeReports) metadata.reports = [];
+  if (!options.includeDashboards) metadata.dashboards = [];
+  if (!options.includeWorkspaces) metadata.workspaces = [];
+  if (!options.includeIViews) metadata.iViews = [];
+  if (!options.includeRoles) metadata.roles = [];
+  if (!options.includeSecurityParameters) metadata.securityParameters = [];
+  if (!options.includeNotifications) metadata.notifications = [];
+  if (!options.includeDataFeeds) metadata.dataFeeds = [];
+  if (!options.includeSchedules) metadata.schedules = [];
+
+  // Apply module filter if specified
+  if (options.selectedModuleGuids.length > 0) {
+    const selectedGuids = new Set(options.selectedModuleGuids);
+    metadata.modules = metadata.modules.filter(m => selectedGuids.has(m.guid));
+    metadata.fields = metadata.fields.filter(f => selectedGuids.has(f.moduleGuid));
+    metadata.calculatedFields = metadata.calculatedFields.filter(f => selectedGuids.has(f.moduleGuid));
+    metadata.layouts = metadata.layouts.filter(l => selectedGuids.has(l.moduleGuid));
+    metadata.ddeRules = metadata.ddeRules.filter(r => selectedGuids.has(r.moduleGuid));
+    metadata.notifications = metadata.notifications.filter(n => selectedGuids.has(n.moduleGuid));
   }
 
-  // Collect layouts
-  if (options.includeLayouts) {
-    await delay(200 + Math.random() * 200);
-    metadata.layouts = generateLayouts(metadata.modules, isSource);
-    reportProgress(`Collecting layouts from ${environment.displayName}...`);
-  }
-
-  // Collect values lists
-  if (options.includeValuesLists) {
-    await delay(300 + Math.random() * 200);
-    metadata.valuesLists = generateValuesLists(12, isSource);
-    reportProgress(`Collecting values lists from ${environment.displayName}...`);
-  }
-
-  // Collect values list values
-  if (options.includeValuesListValues && metadata.valuesLists.length > 0) {
-    await delay(500 + Math.random() * 300);
-    metadata.valuesListValues = generateValuesListValues(metadata.valuesLists);
-    reportProgress(`Collecting values list values from ${environment.displayName}...`);
-  }
-
-  // Collect DDE rules
-  if (options.includeDDERules) {
-    await delay(300 + Math.random() * 200);
-    metadata.ddeRules = generateDDERules(metadata.modules, isSource);
-    reportProgress(`Collecting DDE rules from ${environment.displayName}...`);
-  }
-
-  // Collect DDE actions
-  if (options.includeDDEActions && metadata.ddeRules.length > 0) {
-    await delay(400 + Math.random() * 300);
-    metadata.ddeActions = generateDDEActions(metadata.ddeRules);
-    reportProgress(`Collecting DDE actions from ${environment.displayName}...`);
-  }
-
-  // Collect reports
-  if (options.includeReports) {
-    await delay(300 + Math.random() * 200);
-    metadata.reports = generateReports(10, isSource);
-    reportProgress(`Collecting reports from ${environment.displayName}...`);
-  }
-
-  // Collect dashboards
-  if (options.includeDashboards) {
-    await delay(250 + Math.random() * 150);
-    metadata.dashboards = generateDashboards(5, isSource);
-    reportProgress(`Collecting dashboards from ${environment.displayName}...`);
-  }
-
-  // Collect workspaces
-  if (options.includeWorkspaces) {
-    await delay(200 + Math.random() * 100);
-    metadata.workspaces = generateWorkspaces(3);
-    reportProgress(`Collecting workspaces from ${environment.displayName}...`);
-  }
-
-  // Collect iViews
-  if (options.includeIViews) {
-    await delay(300 + Math.random() * 200);
-    metadata.iViews = generateIViews(15);
-    reportProgress(`Collecting iViews from ${environment.displayName}...`);
-  }
-
-  // Collect roles
-  if (options.includeRoles) {
-    await delay(250 + Math.random() * 150);
-    metadata.roles = generateRoles(isSource);
-    reportProgress(`Collecting roles from ${environment.displayName}...`);
-  }
-
-  // Collect security parameters
-  if (options.includeSecurityParameters) {
-    await delay(350 + Math.random() * 250);
-    metadata.securityParameters = generateSecurityParameters(metadata.modules, isSource);
-    reportProgress(`Collecting security parameters from ${environment.displayName}...`);
-  }
-
-  // Collect notifications
-  if (options.includeNotifications) {
-    await delay(200 + Math.random() * 150);
-    metadata.notifications = generateNotifications(metadata.modules, isSource);
-    reportProgress(`Collecting notifications from ${environment.displayName}...`);
-  }
-
-  // Collect data feeds
-  if (options.includeDataFeeds) {
-    await delay(300 + Math.random() * 200);
-    metadata.dataFeeds = generateDataFeeds(metadata.modules, isSource);
-    reportProgress(`Collecting data feeds from ${environment.displayName}...`);
-  }
-
-  // Collect schedules
-  if (options.includeSchedules) {
-    await delay(200 + Math.random() * 100);
-    metadata.schedules = generateSchedules(8);
-    reportProgress(`Collecting schedules from ${environment.displayName}...`);
+  if (onProgress) {
+    onProgress({
+      currentStep: 'Complete',
+      currentItem: 'Done',
+      progress: 100,
+      totalSteps: steps.length,
+      currentStepNumber: steps.length,
+    });
   }
 
   return metadata;
+}
+
+/**
+ * Test connection to an Archer environment
+ */
+export async function testConnection(environment: ArcherEnvironment): Promise<{
+  success: boolean;
+  message: string;
+  version?: string;
+}> {
+  // Simulate connection test
+  await delay(1000);
+  
+  // In real implementation, this would make an API call to Archer
+  if (!environment.baseUrl || !environment.username) {
+    return {
+      success: false,
+      message: 'Invalid configuration: URL and username are required',
+    };
+  }
+
+  // Simulate successful connection
+  return {
+    success: true,
+    message: 'Connection successful',
+    version: '6.14.0.1',
+  };
 }

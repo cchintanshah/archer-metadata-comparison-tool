@@ -1,85 +1,71 @@
 // ==========================================
-// Archer Comparison Tool - Main App
+// Archer Comparison Tool - Main Application
 // ==========================================
 
-import { Header } from '@/components/Header';
-import { EnvironmentSelector } from '@/components/EnvironmentSelector';
-import { ActionBar } from '@/components/ActionBar';
-import { ResultsSummary } from '@/components/ResultsSummary';
-import { ResultsTabs } from '@/components/ResultsTabs';
-import { EnvironmentDialog } from '@/components/EnvironmentDialog';
-import { CollectionDialog } from '@/components/CollectionDialog';
-import { useAppStore } from '@/store/appStore';
+import { useAppStore } from './store/appStore';
+import { Header } from './components/Header';
+import { EnvironmentSelector } from './components/EnvironmentSelector';
+import { ActionBar } from './components/ActionBar';
+import { ResultsSummary } from './components/ResultsSummary';
+import { ResultsTabs } from './components/ResultsTabs';
+import { EnvironmentDialog } from './components/EnvironmentDialog';
+import { CollectionOptionsDialog } from './components/CollectionOptionsDialog';
 
-export function App() {
-  const { summary } = useAppStore();
+function App() {
+  const { 
+    tabResults, 
+    comparisonSummary, 
+    error, 
+    setError 
+  } = useAppStore();
 
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <Header />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* Environment Selection */}
-        <EnvironmentSelector />
+      {/* Environment Selection */}
+      <EnvironmentSelector />
 
-        {/* Action Bar */}
-        <ActionBar />
+      {/* Action Bar */}
+      <ActionBar />
 
-        {/* Results */}
-        {summary && (
-          <>
-            <ResultsSummary />
-            <ResultsTabs />
-          </>
-        )}
-
-        {/* Empty State */}
-        {!summary && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-              <svg 
-                className="w-8 h-8 text-blue-600" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Ready to Compare
-            </h3>
-            <p className="text-gray-500 max-w-md mx-auto">
-              Select source and target environments above, configure your collection options, 
-              and click "Compare Environments" to analyze the differences.
-            </p>
+      {/* Error Display */}
+      {error && (
+        <div className="mx-4 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <span>{error}</span>
           </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
-          <p>Archer Comparison Tool • Compare RSA Archer GRC Environments</p>
-          <p className="mt-1 text-xs">
-            Currently running in demo mode with mock data. 
-            <a href="#setup" className="text-blue-600 hover:underline ml-1">
-              Connect to .NET backend for real API integration
-            </a>
-          </p>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-      </footer>
+      )}
+
+      {/* Main Content */}
+      <div className="p-4 space-y-4">
+        {/* Results Summary */}
+        <ResultsSummary />
+
+        {/* Results Tabs */}
+        {comparisonSummary && comparisonSummary.totalItems > 0 && (
+          <ResultsTabs tabResults={tabResults} summary={comparisonSummary} />
+        )}
+      </div>
 
       {/* Dialogs */}
       <EnvironmentDialog />
-      <CollectionDialog />
+      <CollectionOptionsDialog />
     </div>
   );
 }
+
+export default App;

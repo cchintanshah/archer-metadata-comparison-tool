@@ -1,14 +1,14 @@
 // ==========================================
 // Environment Dialog Component
+// Add/Edit Archer environments
 // ==========================================
 
-import { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { useAppStore } from '@/store/appStore';
-import { testConnection } from '@/services/mockDataService';
-import { cn } from '@/utils/cn';
+import React, { useState, useEffect } from 'react';
+import { useAppStore } from '../store/appStore';
+import { testConnection } from '../services/metadataCollector';
+import { createEnvironment } from '../types';
 
-export function EnvironmentDialog() {
+export const EnvironmentDialog: React.FC = () => {
   const {
     showEnvironmentDialog,
     editingEnvironment,
@@ -25,14 +25,13 @@ export function EnvironmentDialog() {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Initialize form when editing
   useEffect(() => {
     if (editingEnvironment) {
       setDisplayName(editingEnvironment.displayName);
       setBaseUrl(editingEnvironment.baseUrl);
       setInstanceName(editingEnvironment.instanceName);
       setUsername(editingEnvironment.username);
-      setPassword('');
+      setPassword(''); // Don't show encrypted password
     } else {
       setDisplayName('');
       setBaseUrl('');
@@ -43,198 +42,195 @@ export function EnvironmentDialog() {
     setTestResult(null);
   }, [editingEnvironment, showEnvironmentDialog]);
 
-  const handleClose = () => {
-    setShowEnvironmentDialog(false, null);
-  };
-
-  const handleTest = async () => {
+  const handleTestConnection = async () => {
     setIsTesting(true);
     setTestResult(null);
 
+    const env = createEnvironment({
+      displayName,
+      baseUrl,
+      instanceName,
+      username,
+      encryptedPassword: password, // In real app, encrypt this
+    });
+
     try {
-      const result = await testConnection({
-        id: editingEnvironment?.id || 'test',
+      const result = await testConnection(env);
+      setTestResult(result);
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Connection failed',
+      });
+    }
+
+    setIsTesting(false);
+  };
+
+  const handleSave = () => {
+    if (!displayName || !baseUrl || !username) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (editingEnvironment) {
+      updateEnvironment({
+        ...editingEnvironment,
+        displayName,
+        baseUrl,
+        instanceName,
+        username,
+        encryptedPassword: password || editingEnvironment.encryptedPassword,
+      });
+    } else {
+      addEnvironment(createEnvironment({
         displayName,
         baseUrl,
         instanceName,
         username,
         encryptedPassword: password,
-      });
-      setTestResult(result);
-    } catch {
-      setTestResult({ success: false, message: 'Failed to test connection' });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  const handleSave = () => {
-    const envData = {
-      displayName,
-      baseUrl,
-      instanceName,
-      username,
-      encryptedPassword: password || editingEnvironment?.encryptedPassword || '',
-    };
-
-    if (editingEnvironment) {
-      updateEnvironment(editingEnvironment.id, envData);
-    } else {
-      addEnvironment(envData);
+      }));
     }
 
-    handleClose();
+    setShowEnvironmentDialog(false);
   };
-
-  const isValid = displayName && baseUrl && instanceName && username;
 
   if (!showEnvironmentDialog) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-      
-      {/* Dialog */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">
             {editingEnvironment ? 'Edit Environment' : 'Add Environment'}
           </h2>
           <button
-            onClick={handleClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={() => setShowEnvironmentDialog(false)}
+            className="text-gray-400 hover:text-gray-600"
           >
-            <X className="w-5 h-5" />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        {/* Form */}
-        <div className="p-6 space-y-4">
+        {/* Body */}
+        <div className="px-6 py-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Display Name *
+              Display Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g., Production"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Production, Development, etc."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Base URL *
+              Base URL <span className="text-red-500">*</span>
             </label>
             <input
-              type="url"
+              type="text"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://archer.company.com"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Instance Name *
+              Instance Name
             </label>
             <input
               type="text"
               value={instanceName}
               onChange={(e) => setInstanceName(e.target.value)}
-              placeholder="e.g., ArcherProd"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Default"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username *
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password {editingEnvironment ? '' : '*'}
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={editingEnvironment ? '(unchanged)' : 'Enter password'}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Username <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="sysadmin"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
 
-          {/* Test Result */}
-          {testResult && (
-            <div className={cn(
-              'flex items-center gap-2 p-3 rounded-lg',
-              testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-            )}>
-              {testResult.success ? (
-                <CheckCircle className="w-5 h-5 flex-shrink-0" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Password {!editingEnvironment && <span className="text-red-500">*</span>}
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={editingEnvironment ? '(unchanged)' : 'Enter password'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Test Connection */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleTestConnection}
+              disabled={isTesting || !baseUrl || !username}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors
+                ${isTesting || !baseUrl || !username
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+            >
+              {isTesting ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Testing...</span>
+                </>
               ) : (
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>Test Connection</span>
               )}
-              <span className="text-sm">{testResult.message}</span>
-            </div>
-          )}
+            </button>
+            {testResult && (
+              <span className={testResult.success ? 'text-green-600' : 'text-red-600'}>
+                {testResult.message}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
           <button
-            onClick={handleTest}
-            disabled={!isValid || isTesting}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
-              isValid && !isTesting
-                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            )}
+            onClick={() => setShowEnvironmentDialog(false)}
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            {isTesting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Test Connection
+            Cancel
           </button>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={handleClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!isValid}
-              className={cn(
-                'px-6 py-2 rounded-lg font-medium transition-colors',
-                isValid
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              )}
-            >
-              {editingEnvironment ? 'Save Changes' : 'Add Environment'}
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            {editingEnvironment ? 'Save Changes' : 'Add Environment'}
+          </button>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default EnvironmentDialog;

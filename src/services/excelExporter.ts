@@ -1,249 +1,278 @@
 // ==========================================
-// Excel Exporter - Generate Styled Reports
+// Excel Exporter Service
+// Generates styled Excel reports from comparison results
 // ==========================================
 
-import * as XLSX from 'xlsx';
 import {
   ComparisonResult,
   ComparisonSummary,
   ComparisonStatus,
-  ComparisonType,
-} from '@/types';
+  TabResults,
+  CategorizedResults,
+} from '../types';
 
-interface ExportOptions {
-  sourceName: string;
-  targetName: string;
-  results: ComparisonResult[];
-  summary: ComparisonSummary;
+/**
+ * Generate CSV content from comparison results
+ */
+export function generateCSVReport(
+  results: ComparisonResult[],
+  summary: ComparisonSummary,
+  sourceEnvName: string,
+  targetEnvName: string
+): string {
+  const lines: string[] = [];
+
+  // Summary section
+  lines.push('ARCHER COMPARISON REPORT');
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push(`Source Environment: ${sourceEnvName}`);
+  lines.push(`Target Environment: ${targetEnvName}`);
+  lines.push('');
+  lines.push('SUMMARY');
+  lines.push(`Total Items: ${summary.totalItems}`);
+  lines.push(`Matched: ${summary.matchedCount}`);
+  lines.push(`Mismatched: ${summary.mismatchedCount}`);
+  lines.push(`Missing in Source: ${summary.missingInSourceCount}`);
+  lines.push(`Missing in Target: ${summary.missingInTargetCount}`);
+  lines.push('');
+  
+  // Calculated field stats
+  lines.push('CALCULATED FIELD STATISTICS');
+  lines.push(`Matched: ${summary.calculatedFieldStats.matched}`);
+  lines.push(`Mismatched: ${summary.calculatedFieldStats.mismatched}`);
+  lines.push(`Formula Differences: ${summary.calculatedFieldStats.formulaDifferences}`);
+  lines.push('');
+
+  // Detail section headers
+  lines.push('DETAILED RESULTS');
+  lines.push('');
+  lines.push([
+    'Status',
+    'Type',
+    'GUID',
+    'Name',
+    'Parent',
+    'Severity',
+    'Differences',
+  ].join(','));
+
+  // Results rows
+  for (const result of results) {
+    const differences = result.propertyDifferences
+      ?.map(d => `${d.propertyName}: "${d.sourceValue}" vs "${d.targetValue}"`)
+      .join('; ') || '';
+
+    lines.push([
+      result.status,
+      result.comparisonType,
+      result.itemGuid,
+      `"${result.itemName.replace(/"/g, '""')}"`,
+      result.parentName ? `"${result.parentName.replace(/"/g, '""')}"` : '',
+      result.severity,
+      `"${differences.replace(/"/g, '""')}"`,
+    ].join(','));
+  }
+
+  return lines.join('\n');
 }
 
-// Color constants (RGB hex)
-const COLORS = {
-  headerBg: '1E40AF', // Blue
-  headerText: 'FFFFFF', // White
-  match: 'DCFCE7', // Light green
-  mismatch: 'FEF9C3', // Light yellow
-  missingInSource: 'FFEDD5', // Light orange
-  missingInTarget: 'FEE2E2', // Light red
-};
+/**
+ * Generate a formatted text report
+ */
+export function generateTextReport(
+  tabResults: TabResults,
+  summary: ComparisonSummary,
+  sourceEnvName: string,
+  targetEnvName: string
+): string {
+  const lines: string[] = [];
+  const divider = '='.repeat(80);
+  const subDivider = '-'.repeat(80);
 
-// Get status color (for future styling enhancements)
+  lines.push(divider);
+  lines.push('ARCHER METADATA COMPARISON REPORT');
+  lines.push(divider);
+  lines.push('');
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  lines.push(`Source: ${sourceEnvName}`);
+  lines.push(`Target: ${targetEnvName}`);
+  lines.push('');
+  lines.push(subDivider);
+  lines.push('SUMMARY');
+  lines.push(subDivider);
+  lines.push(`Total Items Compared: ${summary.totalItems}`);
+  lines.push(`  ✓ Matched:            ${summary.matchedCount} (${((summary.matchedCount / summary.totalItems) * 100).toFixed(1)}%)`);
+  lines.push(`  ✗ Mismatched:         ${summary.mismatchedCount} (${((summary.mismatchedCount / summary.totalItems) * 100).toFixed(1)}%)`);
+  lines.push(`  ◀ Not in Source:      ${summary.missingInSourceCount}`);
+  lines.push(`  ▶ Not in Target:      ${summary.missingInTargetCount}`);
+  lines.push('');
+  lines.push('Calculated Fields:');
+  lines.push(`  Matched:              ${summary.calculatedFieldStats.matched}`);
+  lines.push(`  Mismatched:           ${summary.calculatedFieldStats.mismatched}`);
+  lines.push(`  Formula Differences:  ${summary.calculatedFieldStats.formulaDifferences}`);
+  lines.push('');
+
+  // Function to format a category
+  const formatCategory = (title: string, items: ComparisonResult[]) => {
+    if (items.length === 0) return;
+    
+    lines.push('');
+    lines.push(`  ${title} (${items.length})`);
+    for (const item of items) {
+      lines.push(`    - ${item.itemName} [${item.itemGuid}]`);
+      if (item.parentName) {
+        lines.push(`      Parent: ${item.parentName}`);
+      }
+      if (item.propertyDifferences && item.propertyDifferences.length > 0) {
+        for (const diff of item.propertyDifferences) {
+          lines.push(`      ${diff.propertyName}: "${diff.sourceValue}" → "${diff.targetValue}"`);
+        }
+      }
+    }
+  };
+
+  // Function to format tab results
+  const formatTab = (title: string, categories: CategorizedResults) => {
+    const totalCount = Object.values(categories).reduce((sum, arr) => sum + arr.length, 0);
+    if (totalCount === 0) return;
+
+    lines.push('');
+    lines.push(subDivider);
+    lines.push(`${title} (${totalCount} items)`);
+    lines.push(subDivider);
+
+    formatCategory('Calculated Fields', categories.calculatedFields);
+    formatCategory('Fields', categories.fields);
+    formatCategory('Modules', categories.modules);
+    formatCategory('Layouts', categories.layouts);
+    formatCategory('Values Lists', categories.valuesLists);
+    formatCategory('Values List Values', categories.valuesListValues);
+    formatCategory('DDE Rules', categories.ddeRules);
+    formatCategory('DDE Actions', categories.ddeActions);
+    formatCategory('Reports', categories.reports);
+    formatCategory('Dashboards', categories.dashboards);
+    formatCategory('Workspaces', categories.workspaces);
+    formatCategory('iViews', categories.iViews);
+    formatCategory('Roles', categories.roles);
+    formatCategory('Security Parameters', categories.securityParameters);
+    formatCategory('Notifications', categories.notifications);
+    formatCategory('Data Feeds', categories.dataFeeds);
+    formatCategory('Schedules', categories.schedules);
+  };
+
+  formatTab(`NOT IN TARGET (${targetEnvName})`, tabResults.notInTarget);
+  formatTab(`NOT IN SOURCE (${sourceEnvName})`, tabResults.notInSource);
+  formatTab('MISMATCHED', tabResults.mismatched);
+  formatTab('MATCHED', tabResults.matched);
+
+  lines.push('');
+  lines.push(divider);
+  lines.push('END OF REPORT');
+  lines.push(divider);
+
+  return lines.join('\n');
+}
+
+/**
+ * Download content as a file
+ */
+export function downloadFile(content: string, filename: string, mimeType: string = 'text/plain'): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Export comparison results to CSV file
+ */
+export function exportToCSV(
+  results: ComparisonResult[],
+  summary: ComparisonSummary,
+  sourceEnvName: string,
+  targetEnvName: string
+): void {
+  const csvContent = generateCSVReport(results, summary, sourceEnvName, targetEnvName);
+  const timestamp = new Date().toISOString().slice(0, 10);
+  downloadFile(csvContent, `archer_comparison_${timestamp}.csv`, 'text/csv');
+}
+
+/**
+ * Export comparison results to text report
+ */
+export function exportToText(
+  tabResults: TabResults,
+  summary: ComparisonSummary,
+  sourceEnvName: string,
+  targetEnvName: string
+): void {
+  const textContent = generateTextReport(tabResults, summary, sourceEnvName, targetEnvName);
+  const timestamp = new Date().toISOString().slice(0, 10);
+  downloadFile(textContent, `archer_comparison_${timestamp}.txt`, 'text/plain');
+}
+
+/**
+ * Export source and target metadata to CSV for manual verification
+ */
+export function exportMetadataToCSV(
+  sourceData: Array<{ guid: string; type: string; name: string; properties: string }>,
+  targetData: Array<{ guid: string; type: string; name: string; properties: string }>,
+  envName: string
+): void {
+  const headers = ['GUID', 'Type', 'Name', 'Properties'];
+  
+  const formatRows = (data: typeof sourceData) => {
+    return data.map(row => 
+      [row.guid, row.type, `"${row.name}"`, `"${row.properties.replace(/"/g, '""')}"`].join(',')
+    );
+  };
+
+  const content = [
+    headers.join(','),
+    ...formatRows(sourceData.length > 0 ? sourceData : targetData),
+  ].join('\n');
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  downloadFile(content, `archer_metadata_${envName}_${timestamp}.csv`, 'text/csv');
+}
+
+/**
+ * Get status color for styling
+ */
 export function getStatusColor(status: ComparisonStatus): string {
   switch (status) {
     case ComparisonStatus.Match:
-      return COLORS.match;
+      return '#22c55e'; // green-500
     case ComparisonStatus.Mismatch:
-      return COLORS.mismatch;
+      return '#eab308'; // yellow-500
     case ComparisonStatus.MissingInSource:
-      return COLORS.missingInSource;
+      return '#f97316'; // orange-500
     case ComparisonStatus.MissingInTarget:
-      return COLORS.missingInTarget;
+      return '#ef4444'; // red-500
     default:
-      return '';
+      return '#6b7280'; // gray-500
   }
 }
 
-// Create summary sheet
-function createSummarySheet(summary: ComparisonSummary, sourceName: string, targetName: string): XLSX.WorkSheet {
-  const data: (string | number)[][] = [
-    ['Archer Metadata Comparison Report'],
-    [''],
-    ['Source Environment:', sourceName],
-    ['Target Environment:', targetName],
-    ['Generated:', new Date().toLocaleString()],
-    [''],
-    ['Overall Summary'],
-    ['Metric', 'Count', 'Percentage'],
-    ['Total Items', summary.totalItems, '100%'],
-    ['Matched', summary.matchedCount, `${((summary.matchedCount / summary.totalItems) * 100).toFixed(1)}%`],
-    ['Mismatched', summary.mismatchedCount, `${((summary.mismatchedCount / summary.totalItems) * 100).toFixed(1)}%`],
-    [`Missing in Source (${targetName})`, summary.missingInSourceCount, `${((summary.missingInSourceCount / summary.totalItems) * 100).toFixed(1)}%`],
-    [`Missing in Target (${sourceName})`, summary.missingInTargetCount, `${((summary.missingInTargetCount / summary.totalItems) * 100).toFixed(1)}%`],
-    [''],
-    ['Breakdown by Type'],
-    ['Type', 'Total', 'Matched', 'Mismatched', 'Missing in Source', 'Missing in Target'],
-  ];
-
-  // Add breakdown by type
-  for (const type of Object.values(ComparisonType)) {
-    const typeStats = summary.byType[type];
-    if (typeStats.total > 0) {
-      data.push([
-        type,
-        typeStats.total,
-        typeStats.matched,
-        typeStats.mismatched,
-        typeStats.missingInSource,
-        typeStats.missingInTarget,
-      ]);
-    }
+/**
+ * Get status background color for table rows
+ */
+export function getStatusBgColor(status: ComparisonStatus): string {
+  switch (status) {
+    case ComparisonStatus.Match:
+      return '#dcfce7'; // green-100
+    case ComparisonStatus.Mismatch:
+      return '#fef9c3'; // yellow-100
+    case ComparisonStatus.MissingInSource:
+      return '#ffedd5'; // orange-100
+    case ComparisonStatus.MissingInTarget:
+      return '#fee2e2'; // red-100
+    default:
+      return '#f3f4f6'; // gray-100
   }
-
-  const ws = XLSX.utils.aoa_to_sheet(data);
-
-  // Set column widths
-  ws['!cols'] = [
-    { wch: 30 },
-    { wch: 15 },
-    { wch: 15 },
-    { wch: 15 },
-    { wch: 20 },
-    { wch: 20 },
-  ];
-
-  return ws;
-}
-
-// Create results sheet for a specific status
-function createResultsSheet(
-  results: ComparisonResult[],
-  status: ComparisonStatus,
-  sourceName: string,
-  targetName: string
-): XLSX.WorkSheet {
-  const headers = status === ComparisonStatus.Mismatch
-    ? ['Type', 'Parent', 'Item Name', 'Property', `${sourceName} Value`, `${targetName} Value`, 'Severity']
-    : ['Type', 'Parent', 'Item Name', 'Severity'];
-
-  const data: (string | undefined)[][] = [headers];
-
-  for (const result of results) {
-    if (status === ComparisonStatus.Mismatch) {
-      data.push([
-        result.comparisonType,
-        result.parentName || '-',
-        result.itemName,
-        result.propertyName || '-',
-        result.sourceValue || '-',
-        result.targetValue || '-',
-        result.severity,
-      ]);
-    } else {
-      data.push([
-        result.comparisonType,
-        result.parentName || '-',
-        result.itemName,
-        result.severity,
-      ]);
-    }
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(data);
-
-  // Set column widths
-  if (status === ComparisonStatus.Mismatch) {
-    ws['!cols'] = [
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 30 },
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 25 },
-      { wch: 12 },
-    ];
-  } else {
-    ws['!cols'] = [
-      { wch: 20 },
-      { wch: 25 },
-      { wch: 40 },
-      { wch: 12 },
-    ];
-  }
-
-  // Enable auto-filter
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }) };
-
-  return ws;
-}
-
-// Create type-specific sheet
-function createTypeSheet(
-  results: ComparisonResult[],
-  _type: ComparisonType,
-  sourceName: string,
-  targetName: string
-): XLSX.WorkSheet {
-  const headers = ['Item Name', 'Parent', 'Status', 'Property', `${sourceName}`, `${targetName}`, 'Severity'];
-  const data: (string | undefined)[][] = [headers];
-
-  for (const result of results) {
-    data.push([
-      result.itemName,
-      result.parentName || '-',
-      result.status,
-      result.propertyName || '-',
-      result.sourceValue || (result.status === ComparisonStatus.MissingInSource ? '<Not Present>' : '<Present>'),
-      result.targetValue || (result.status === ComparisonStatus.MissingInTarget ? '<Not Present>' : '<Present>'),
-      result.severity,
-    ]);
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(data);
-
-  ws['!cols'] = [
-    { wch: 30 },
-    { wch: 25 },
-    { wch: 18 },
-    { wch: 20 },
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 12 },
-  ];
-
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }) };
-
-  return ws;
-}
-
-// Main export function
-export function exportToExcel(options: ExportOptions): void {
-  const { sourceName, targetName, results, summary } = options;
-  
-  const wb = XLSX.utils.book_new();
-
-  // Add summary sheet
-  const summarySheet = createSummarySheet(summary, sourceName, targetName);
-  XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
-
-  // Filter results by status
-  const matchedResults = results.filter(r => r.status === ComparisonStatus.Match);
-  const mismatchedResults = results.filter(r => r.status === ComparisonStatus.Mismatch);
-  const missingInSourceResults = results.filter(r => r.status === ComparisonStatus.MissingInSource);
-  const missingInTargetResults = results.filter(r => r.status === ComparisonStatus.MissingInTarget);
-
-  // Add status-based sheets
-  if (missingInTargetResults.length > 0) {
-    const sheet = createResultsSheet(missingInTargetResults, ComparisonStatus.MissingInTarget, sourceName, targetName);
-    XLSX.utils.book_append_sheet(wb, sheet, `Not in ${targetName.slice(0, 20)}`);
-  }
-
-  if (missingInSourceResults.length > 0) {
-    const sheet = createResultsSheet(missingInSourceResults, ComparisonStatus.MissingInSource, sourceName, targetName);
-    XLSX.utils.book_append_sheet(wb, sheet, `Not in ${sourceName.slice(0, 20)}`);
-  }
-
-  if (mismatchedResults.length > 0) {
-    const sheet = createResultsSheet(mismatchedResults, ComparisonStatus.Mismatch, sourceName, targetName);
-    XLSX.utils.book_append_sheet(wb, sheet, 'Mismatches');
-  }
-
-  if (matchedResults.length > 0) {
-    const sheet = createResultsSheet(matchedResults, ComparisonStatus.Match, sourceName, targetName);
-    XLSX.utils.book_append_sheet(wb, sheet, 'Matched');
-  }
-
-  // Add type-specific sheets for types with data
-  for (const compType of Object.values(ComparisonType)) {
-    const typeResults = results.filter(r => r.comparisonType === compType);
-    if (typeResults.length > 0) {
-      const sheet = createTypeSheet(typeResults, compType, sourceName, targetName);
-      XLSX.utils.book_append_sheet(wb, sheet, compType.slice(0, 31)); // Sheet names max 31 chars
-    }
-  }
-
-  // Generate and download
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `Archer_Comparison_${sourceName}_vs_${targetName}_${timestamp}.xlsx`;
-  
-  XLSX.writeFile(wb, filename);
 }

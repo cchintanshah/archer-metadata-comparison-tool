@@ -1,5 +1,6 @@
 // ==========================================
-// Mock Metadata Service - Generates Sample Data
+// Mock Data Service for Testing
+// Generates realistic Archer metadata with GUIDs
 // ==========================================
 
 import { v4 as uuidv4 } from 'uuid';
@@ -20,510 +21,574 @@ import {
   Notification,
   DataFeed,
   Schedule,
+  CollectedMetadata,
+  ArcherEnvironment,
   ComparisonType,
   FieldType,
   ReportType,
-  ArcherEnvironment,
-} from '@/types';
+} from '../types';
 
-// Sample module names for GRC context
-const moduleNames = [
-  'Applications', 'Business Processes', 'Risks', 'Controls', 'Policies',
-  'Incidents', 'Findings', 'Audits', 'Compliance', 'Vendors',
-  'Assets', 'Threats', 'Vulnerabilities', 'Exceptions', 'Tasks'
+// Stable GUIDs for cross-environment matching
+const STABLE_GUIDS = {
+  modules: [
+    'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+    'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    'd4e5f6a7-b8c9-0123-def0-234567890123',
+    'e5f6a7b8-c9d0-1234-ef01-345678901234',
+  ],
+  fields: Array.from({ length: 50 }, () => uuidv4()),
+  valuesLists: Array.from({ length: 10 }, () => uuidv4()),
+  ddeRules: Array.from({ length: 15 }, () => uuidv4()),
+  ddeActions: Array.from({ length: 30 }, () => uuidv4()),
+};
+
+// Make some fields shared between environments
+const SHARED_FIELD_GUIDS = STABLE_GUIDS.fields.slice(0, 35);
+const SOURCE_ONLY_FIELD_GUIDS = Array.from({ length: 5 }, () => uuidv4());
+const TARGET_ONLY_FIELD_GUIDS = Array.from({ length: 5 }, () => uuidv4());
+
+const MODULE_NAMES = [
+  'Incident Management',
+  'Risk Register',
+  'Policy Management',
+  'Vendor Assessment',
+  'Business Continuity',
 ];
 
-const fieldNames = [
-  'Name', 'Description', 'Status', 'Owner', 'Created Date',
-  'Modified Date', 'Risk Score', 'Control Type', 'Category',
-  'Priority', 'Due Date', 'Completion Date', 'Notes', 'Attachments',
-  'Related Items', 'Rating', 'Frequency', 'Impact', 'Likelihood'
+const FIELD_NAMES = [
+  'Record ID', 'Title', 'Description', 'Status', 'Priority',
+  'Owner', 'Created Date', 'Due Date', 'Risk Score', 'Impact',
+  'Likelihood', 'Control Effectiveness', 'Residual Risk', 'Comments',
+  'Attachments', 'Related Records', 'Approval Status', 'Reviewer',
+  'Last Modified', 'Category', 'Sub-Category', 'Department',
+  'Location', 'Compliance Status', 'Audit Trail',
 ];
 
-const valuesListNames = [
-  'Risk Ratings', 'Control Types', 'Status Values', 'Priority Levels',
-  'Impact Ratings', 'Likelihood Ratings', 'Frequency Options', 'Categories',
-  'Regions', 'Departments', 'Yes/No', 'Approval Status', 'Compliance Status'
+const FIELD_TYPES: FieldType[] = [
+  FieldType.Text,
+  FieldType.NumericField,
+  FieldType.DateField,
+  FieldType.ValuesList,
+  FieldType.CrossReference,
+  FieldType.Attachment,
+  FieldType.UsersGroups,
 ];
 
-const reportNames = [
-  'Risk Summary Report', 'Control Effectiveness', 'Compliance Dashboard',
-  'Audit Findings', 'Incident Trends', 'Vendor Risk Overview',
-  'Policy Compliance', 'Asset Inventory', 'Open Tasks', 'Exception Report'
+const CALCULATION_FORMULAS = [
+  'IF([Status]="Open", "Active", "Closed")',
+  'DATEDIFF([Due Date], NOW(), "days")',
+  '[Impact] * [Likelihood]',
+  'IF([Risk Score] > 15, "High", IF([Risk Score] > 8, "Medium", "Low"))',
+  'CONCATENATE([First Name], " ", [Last Name])',
+  'SUM([Related Records].[Amount])',
+  'COUNT([Related Records])',
+  'IF(ISBLANK([Owner]), "Unassigned", [Owner])',
+  'AVERAGE([Related Records].[Score])',
+  'MAX([Related Records].[Date])',
 ];
 
-const roleNames = [
-  'System Administrator', 'Application Owner', 'Risk Manager', 'Auditor',
-  'Compliance Officer', 'Read Only User', 'Power User', 'Report Viewer',
-  'Content Administrator', 'Security Administrator'
-];
-
-// Utility functions
-function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function getFieldTypeName(fieldType: FieldType): string {
+  const typeNames: Record<FieldType, string> = {
+    [FieldType.Text]: 'Text',
+    [FieldType.NumericField]: 'Numeric',
+    [FieldType.DateField]: 'Date',
+    [FieldType.ValuesList]: 'Values List',
+    [FieldType.CrossReference]: 'Cross-Reference',
+    [FieldType.Attachment]: 'Attachment',
+    [FieldType.Image]: 'Image',
+    [FieldType.ExternalLinks]: 'External Links',
+    [FieldType.UsersGroups]: 'Users/Groups',
+    [FieldType.RecordPermissions]: 'Record Permissions',
+    [FieldType.TrackingField]: 'Tracking',
+    [FieldType.SubForm]: 'Sub-Form',
+    [FieldType.RelatedRecords]: 'Related Records',
+    [FieldType.History]: 'History Log',
+    [FieldType.SchedulerField]: 'Scheduler',
+    [FieldType.Matrix]: 'Matrix',
+    [FieldType.IPAddress]: 'IP Address',
+    [FieldType.CalculatedField]: 'Calculated',
+  };
+  return typeNames[fieldType] || 'Unknown';
 }
 
-function randomElement<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+interface GenerationOptions {
+  isSource: boolean;
+  introduceMismatches: boolean;
+  introduceFormulaDifferences: boolean;
 }
 
-function randomBoolean(probability = 0.5): boolean {
-  return Math.random() < probability;
+export function generateMockModules(options: GenerationOptions): Module[] {
+  return MODULE_NAMES.map((name, index) => ({
+    id: index + 1,
+    name: options.isSource ? name : name,
+    guid: STABLE_GUIDS.modules[index],
+    alias: name.replace(/\s+/g, '_'),
+    description: `${name} application for GRC management`,
+    type: ComparisonType.Module,
+    levelId: 100 + index,
+    isSubform: index === 4,
+    parentModuleId: index === 4 ? 1 : undefined,
+    fieldCount: 15 + index * 3,
+  }));
 }
 
-function randomFieldType(): FieldType {
-  const types = Object.values(FieldType);
-  return randomElement(types);
-}
+export function generateMockFields(
+  modules: Module[],
+  options: GenerationOptions
+): { fields: Field[]; calculatedFields: Field[] } {
+  const fields: Field[] = [];
+  const calculatedFields: Field[] = [];
+  let fieldIndex = 0;
 
-function randomReportType(): ReportType {
-  const types = Object.values(ReportType);
-  return randomElement(types);
-}
+  for (const module of modules) {
+    const fieldsPerModule = 8 + Math.floor(Math.random() * 5);
 
-// Generate mock modules
-export function generateModules(count: number = 10, isSource: boolean = true): Module[] {
-  const modules: Module[] = [];
-  const usedNames = new Set<string>();
-  
-  for (let i = 0; i < count; i++) {
-    let name = randomElement(moduleNames);
-    if (usedNames.has(name)) {
-      name = `${name} ${i + 1}`;
+    for (let i = 0; i < fieldsPerModule; i++) {
+      const isCalculated = i >= fieldsPerModule - 2; // Last 2 fields are calculated
+      const fieldType = isCalculated 
+        ? FieldType.CalculatedField 
+        : FIELD_TYPES[fieldIndex % FIELD_TYPES.length];
+      
+      // Determine GUID based on whether this is a shared, source-only, or target-only field
+      let guid: string;
+      if (fieldIndex < SHARED_FIELD_GUIDS.length) {
+        guid = SHARED_FIELD_GUIDS[fieldIndex];
+      } else if (options.isSource) {
+        guid = SOURCE_ONLY_FIELD_GUIDS[fieldIndex % SOURCE_ONLY_FIELD_GUIDS.length] + `-${fieldIndex}`;
+      } else {
+        guid = TARGET_ONLY_FIELD_GUIDS[fieldIndex % TARGET_ONLY_FIELD_GUIDS.length] + `-${fieldIndex}`;
+      }
+
+      const fieldName = FIELD_NAMES[i % FIELD_NAMES.length];
+      
+      // Introduce mismatches for some fields
+      let calculationFormula = isCalculated 
+        ? CALCULATION_FORMULAS[i % CALCULATION_FORMULAS.length] 
+        : undefined;
+      
+      // Modify formula for target to create mismatches
+      if (isCalculated && !options.isSource && options.introduceFormulaDifferences && i % 3 === 0) {
+        calculationFormula = calculationFormula?.replace('IF(', 'IIF(') + ' /* modified */';
+      }
+
+      const field: Field = {
+        id: fieldIndex + 1,
+        name: fieldName,
+        guid,
+        alias: `${module.alias}_${fieldName.replace(/\s+/g, '_')}`,
+        description: `${fieldName} for ${module.name}`,
+        type: isCalculated ? ComparisonType.CalculatedField : ComparisonType.Field,
+        moduleId: module.id,
+        moduleName: module.name,
+        moduleGuid: module.guid,
+        fieldType,
+        fieldTypeName: getFieldTypeName(fieldType),
+        isRequired: i < 3,
+        isKey: i === 0,
+        isCalculated,
+        maxLength: fieldType === FieldType.Text ? 500 : undefined,
+        defaultValue: undefined,
+        relatedValuesListId: fieldType === FieldType.ValuesList ? 1 : undefined,
+        relatedValuesListGuid: fieldType === FieldType.ValuesList 
+          ? STABLE_GUIDS.valuesLists[0] 
+          : undefined,
+        calculationFormula,
+        calculationReturnType: isCalculated ? 'Text' : undefined,
+        calculationSourceFields: isCalculated 
+          ? [SHARED_FIELD_GUIDS[0], SHARED_FIELD_GUIDS[1]] 
+          : undefined,
+      };
+
+      if (isCalculated) {
+        calculatedFields.push(field);
+      } else {
+        fields.push(field);
+      }
+
+      fieldIndex++;
     }
-    usedNames.add(name);
+  }
+
+  return { fields, calculatedFields };
+}
+
+export function generateMockLayouts(modules: Module[], fields: Field[]): Layout[] {
+  const layouts: Layout[] = [];
+
+  for (const module of modules) {
+    const moduleFields = fields.filter(f => f.moduleId === module.id);
     
-    // Introduce some variation for comparison testing
-    const variation = isSource ? 0 : randomInt(0, 2);
-    
-    modules.push({
-      id: 1000 + i,
-      name: variation === 1 && i % 5 === 0 ? `${name} (Modified)` : name,
+    layouts.push({
+      id: module.id,
+      name: `${module.name} Default Layout`,
       guid: uuidv4(),
-      type: ComparisonType.Module,
-      alias: name.toLowerCase().replace(/\s+/g, '_'),
-      description: `This module manages ${name.toLowerCase()} for the organization.`,
-      levelId: 100 + i,
-      isSubform: randomBoolean(0.2),
-      parentModuleId: undefined,
-      fieldCount: randomInt(10, 50),
+      alias: `${module.alias}_default_layout`,
+      description: `Default layout for ${module.name}`,
+      type: ComparisonType.Layout,
+      moduleId: module.id,
+      moduleName: module.name,
+      moduleGuid: module.guid,
+      isDefault: true,
+      fieldIds: moduleFields.map(f => f.id),
+      fieldGuids: moduleFields.map(f => f.guid),
     });
   }
-  
-  // For target, skip some modules to simulate missing items
-  if (!isSource) {
-    const skipIndex = randomInt(0, modules.length - 1);
-    modules.splice(skipIndex, 1);
-  }
-  
-  return modules;
-}
 
-// Generate mock fields
-export function generateFields(modules: Module[], isSource: boolean = true): Field[] {
-  const fields: Field[] = [];
-  let fieldId = 5000;
-  
-  for (const module of modules) {
-    const fieldCount = randomInt(5, 15);
-    const usedFieldNames = new Set<string>();
-    
-    for (let i = 0; i < fieldCount; i++) {
-      let name = randomElement(fieldNames);
-      if (usedFieldNames.has(name)) {
-        name = `${name} ${i + 1}`;
-      }
-      usedFieldNames.add(name);
-      
-      const fieldType = randomFieldType();
-      const variation = isSource ? 0 : randomInt(0, 3);
-      
-      fields.push({
-        id: fieldId++,
-        name: name,
-        guid: uuidv4(),
-        type: ComparisonType.Field,
-        alias: name.toLowerCase().replace(/\s+/g, '_'),
-        moduleId: module.id,
-        moduleName: module.name,
-        fieldType: fieldType,
-        isRequired: variation === 1 ? !randomBoolean(0.3) : randomBoolean(0.3),
-        isKey: name === 'Name',
-        isCalculated: randomBoolean(0.1),
-        maxLength: fieldType === FieldType.Text ? randomInt(50, 500) : undefined,
-        defaultValue: randomBoolean(0.2) ? 'Default Value' : undefined,
-        relatedValuesListId: fieldType === FieldType.ValuesList ? randomInt(1, 10) : undefined,
-      });
-    }
-  }
-  
-  // Remove some fields for target to simulate missing
-  if (!isSource) {
-    const removeCount = randomInt(2, 5);
-    for (let i = 0; i < removeCount; i++) {
-      const removeIndex = randomInt(0, fields.length - 1);
-      fields.splice(removeIndex, 1);
-    }
-  }
-  
-  return fields;
-}
-
-// Generate mock layouts
-export function generateLayouts(modules: Module[], _isSource: boolean = true): Layout[] {
-  const layouts: Layout[] = [];
-  let layoutId = 2000;
-  
-  for (const module of modules) {
-    const layoutCount = randomInt(1, 3);
-    
-    for (let i = 0; i < layoutCount; i++) {
-      const layoutName = i === 0 ? 'Default Layout' : `Layout ${i + 1}`;
-      
-      layouts.push({
-        id: layoutId++,
-        name: layoutName,
-        guid: uuidv4(),
-        type: ComparisonType.Layout,
-        moduleId: module.id,
-        moduleName: module.name,
-        isDefault: i === 0,
-        fieldIds: Array.from({ length: randomInt(5, 15) }, () => randomInt(5000, 5200)),
-      });
-    }
-  }
-  
   return layouts;
 }
 
-// Generate mock values lists
-export function generateValuesLists(count: number = 12, isSource: boolean = true): ValuesList[] {
-  const lists: ValuesList[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    const name = valuesListNames[i % valuesListNames.length];
-    const variation = isSource ? '' : (i % 4 === 0 ? ' (Updated)' : '');
-    
-    lists.push({
-      id: 3000 + i,
-      name: `${name}${variation}`,
-      guid: uuidv4(),
-      type: ComparisonType.ValuesList,
-      alias: name.toLowerCase().replace(/\s+/g, '_'),
-      description: `Values list for ${name.toLowerCase()}`,
-      valuesCount: randomInt(3, 20),
-      isHierarchical: randomBoolean(0.2),
-    });
-  }
-  
-  if (!isSource) {
-    lists.splice(randomInt(0, lists.length - 1), 1);
-  }
-  
-  return lists;
+export function generateMockValuesLists(options: GenerationOptions): ValuesList[] {
+  const listNames = [
+    'Status', 'Priority', 'Risk Level', 'Department', 'Region',
+    'Category', 'Impact Level', 'Likelihood', 'Control Type', 'Frequency',
+  ];
+
+  return listNames.map((name, index) => ({
+    id: index + 1,
+    name: options.isSource || index < 8 ? name : `${name} (Updated)`,
+    guid: STABLE_GUIDS.valuesLists[index],
+    alias: name.replace(/\s+/g, '_'),
+    description: `${name} values list`,
+    type: ComparisonType.ValuesList,
+    valuesCount: 5 + index,
+    isHierarchical: index > 5,
+  }));
 }
 
-// Generate mock values list values
-export function generateValuesListValues(valuesLists: ValuesList[]): ValuesListValue[] {
+export function generateMockValuesListValues(valuesLists: ValuesList[]): ValuesListValue[] {
   const values: ValuesListValue[] = [];
-  let valueId = 4000;
-  
+  let valueId = 1;
+
   for (const list of valuesLists) {
-    const sampleValues = ['Low', 'Medium', 'High', 'Critical', 'N/A', 'Yes', 'No', 'Pending', 'Approved', 'Rejected'];
-    const count = Math.min(list.valuesCount, sampleValues.length);
+    const valueNames = ['Low', 'Medium', 'High', 'Critical', 'N/A'];
     
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < Math.min(list.valuesCount, 5); i++) {
       values.push({
         id: valueId++,
-        name: sampleValues[i],
+        name: valueNames[i],
         guid: uuidv4(),
         type: ComparisonType.ValuesListValue,
         valuesListId: list.id,
+        valuesListGuid: list.guid,
         valuesListName: list.name,
         numericValue: i + 1,
-        sortOrder: i + 1,
+        sortOrder: i,
         isSelectable: true,
       });
     }
   }
-  
+
   return values;
 }
 
-// Generate mock DDE rules
-export function generateDDERules(modules: Module[], _isSource: boolean = true): DDERule[] {
+export function generateMockDDERules(modules: Module[], options: GenerationOptions): DDERule[] {
   const rules: DDERule[] = [];
-  let ruleId = 6000;
-  
+  let ruleIndex = 0;
+
   for (const module of modules) {
-    const ruleCount = randomInt(0, 3);
+    const rulesPerModule = 2 + Math.floor(Math.random() * 3);
     
-    for (let i = 0; i < ruleCount; i++) {
+    for (let i = 0; i < rulesPerModule; i++) {
       rules.push({
-        id: ruleId++,
+        id: ruleIndex + 1,
         name: `${module.name} Rule ${i + 1}`,
-        guid: uuidv4(),
+        guid: STABLE_GUIDS.ddeRules[ruleIndex % STABLE_GUIDS.ddeRules.length],
+        alias: `${module.alias}_rule_${i + 1}`,
+        description: `Data driven event rule for ${module.name}`,
         type: ComparisonType.DDERule,
         moduleId: module.id,
         moduleName: module.name,
-        isEnabled: randomBoolean(0.8),
-        triggerType: randomElement(['On Create', 'On Update', 'On Delete', 'Scheduled']),
-        actionsCount: randomInt(1, 5),
+        moduleGuid: module.guid,
+        isEnabled: options.isSource || i % 2 === 0,
+        triggerType: i % 2 === 0 ? 'OnSave' : 'OnCreate',
+        conditionLogic: `[Status] = "Active"`,
+        actionsCount: 1 + i,
       });
+      ruleIndex++;
     }
   }
-  
+
   return rules;
 }
 
-// Generate mock DDE actions
-export function generateDDEActions(rules: DDERule[]): DDEAction[] {
+export function generateMockDDEActions(rules: DDERule[]): DDEAction[] {
   const actions: DDEAction[] = [];
-  let actionId = 7000;
-  
+  let actionIndex = 0;
+
   for (const rule of rules) {
-    const actionCount = rule.actionsCount;
-    
-    for (let i = 0; i < actionCount; i++) {
+    for (let i = 0; i < rule.actionsCount; i++) {
       actions.push({
-        id: actionId++,
-        name: `Action ${i + 1}`,
-        guid: uuidv4(),
+        id: actionIndex + 1,
+        name: `${rule.name} Action ${i + 1}`,
+        guid: STABLE_GUIDS.ddeActions[actionIndex % STABLE_GUIDS.ddeActions.length],
+        alias: `${rule.alias}_action_${i + 1}`,
+        description: `Action for ${rule.name}`,
         type: ComparisonType.DDEAction,
         ruleId: rule.id,
+        ruleGuid: rule.guid,
         ruleName: rule.name,
-        actionType: randomElement(['Set Field', 'Send Notification', 'Create Record', 'Update Record']),
-        order: i + 1,
+        actionType: i % 2 === 0 ? 'SetFieldValue' : 'SendNotification',
+        order: i,
       });
+      actionIndex++;
     }
   }
-  
+
   return actions;
 }
 
-// Generate mock reports
-export function generateReports(count: number = 10, isSource: boolean = true): Report[] {
+export function generateMockReports(modules: Module[]): Report[] {
   const reports: Report[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    const name = reportNames[i % reportNames.length];
-    
+  let reportIndex = 0;
+
+  for (const module of modules) {
     reports.push({
-      id: 8000 + i,
-      name: i >= reportNames.length ? `${name} ${i + 1}` : name,
+      id: reportIndex + 1,
+      name: `${module.name} Summary Report`,
       guid: uuidv4(),
+      alias: `${module.alias}_summary_report`,
+      description: `Summary report for ${module.name}`,
       type: ComparisonType.Report,
-      description: `Report for ${name.toLowerCase()}`,
-      reportType: randomReportType(),
-      moduleId: randomInt(1000, 1010),
-      isShared: randomBoolean(0.7),
-      owner: randomElement(['admin', 'risk_manager', 'auditor', 'compliance_officer']),
+      reportType: ReportType.Statistical,
+      moduleId: module.id,
+      moduleName: module.name,
+      moduleGuid: module.guid,
+      isShared: true,
+      owner: 'admin',
     });
+    reportIndex++;
   }
-  
-  if (!isSource) {
-    reports.splice(randomInt(0, reports.length - 1), 1);
-  }
-  
+
   return reports;
 }
 
-// Generate mock dashboards
-export function generateDashboards(count: number = 5, _isSource: boolean = true): Dashboard[] {
-  const dashboards: Dashboard[] = [];
-  const dashboardNames = ['Executive Dashboard', 'Risk Overview', 'Compliance Status', 'Audit Summary', 'Operational Metrics'];
-  
-  for (let i = 0; i < count; i++) {
-    dashboards.push({
-      id: 9000 + i,
-      name: dashboardNames[i % dashboardNames.length],
+export function generateMockDashboards(): Dashboard[] {
+  return [
+    {
+      id: 1,
+      name: 'Executive Dashboard',
       guid: uuidv4(),
+      alias: 'executive_dashboard',
+      description: 'Executive summary dashboard',
       type: ComparisonType.Dashboard,
-      description: `Dashboard showing ${dashboardNames[i % dashboardNames.length].toLowerCase()}`,
-      iViewsCount: randomInt(2, 8),
-      isShared: randomBoolean(0.8),
-      owner: randomElement(['admin', 'executive', 'manager']),
-    });
-  }
-  
-  return dashboards;
+      iViewsCount: 5,
+      iViewGuids: [],
+      isShared: true,
+      owner: 'admin',
+    },
+    {
+      id: 2,
+      name: 'Risk Overview',
+      guid: uuidv4(),
+      alias: 'risk_overview',
+      description: 'Risk management overview',
+      type: ComparisonType.Dashboard,
+      iViewsCount: 3,
+      iViewGuids: [],
+      isShared: true,
+      owner: 'admin',
+    },
+  ];
 }
 
-// Generate mock workspaces
-export function generateWorkspaces(count: number = 3): Workspace[] {
-  const workspaces: Workspace[] = [];
-  const names = ['Risk Management', 'Compliance Center', 'Security Operations'];
-  
-  for (let i = 0; i < count; i++) {
-    workspaces.push({
-      id: 10000 + i,
-      name: names[i % names.length],
+export function generateMockWorkspaces(): Workspace[] {
+  return [
+    {
+      id: 1,
+      name: 'GRC Workspace',
       guid: uuidv4(),
+      alias: 'grc_workspace',
+      description: 'Main GRC workspace',
       type: ComparisonType.Workspace,
-      description: `Workspace for ${names[i % names.length].toLowerCase()}`,
-      dashboardsCount: randomInt(1, 5),
-      order: i + 1,
-    });
-  }
-  
-  return workspaces;
+      dashboardsCount: 2,
+      dashboardGuids: [],
+      order: 1,
+    },
+  ];
 }
 
-// Generate mock iViews
-export function generateIViews(count: number = 15): IView[] {
-  const iViews: IView[] = [];
-  const types = ['Report', 'Statistics', 'Chart', 'Quick Links', 'RSS Feed'];
-  
-  for (let i = 0; i < count; i++) {
-    const type = randomElement(types);
-    iViews.push({
-      id: 11000 + i,
-      name: `iView ${i + 1}`,
+export function generateMockIViews(): IView[] {
+  return [
+    {
+      id: 1,
+      name: 'Risk Heat Map',
       guid: uuidv4(),
+      alias: 'risk_heat_map',
+      description: 'Visual risk heat map',
       type: ComparisonType.IView,
-      iViewType: type,
-      reportId: type === 'Report' ? randomInt(8000, 8010) : undefined,
-    });
-  }
-  
-  return iViews;
+      iViewType: 'Chart',
+    },
+    {
+      id: 2,
+      name: 'Incident Trend',
+      guid: uuidv4(),
+      alias: 'incident_trend',
+      description: 'Incident trend over time',
+      type: ComparisonType.IView,
+      iViewType: 'LineChart',
+    },
+  ];
 }
 
-// Generate mock roles
-export function generateRoles(isSource: boolean = true): Role[] {
-  const roles: Role[] = [];
-  
-  for (let i = 0; i < roleNames.length; i++) {
-    roles.push({
-      id: 12000 + i,
-      name: roleNames[i],
+export function generateMockRoles(): Role[] {
+  return [
+    {
+      id: 1,
+      name: 'Administrator',
       guid: uuidv4(),
+      alias: 'administrator',
+      description: 'Full system access',
       type: ComparisonType.Role,
-      description: `Role for ${roleNames[i].toLowerCase()}`,
-      usersCount: randomInt(0, 50),
-      groupsCount: randomInt(0, 10),
-      isSystemRole: i < 3,
-    });
-  }
-  
-  if (!isSource) {
-    roles.splice(randomInt(0, roles.length - 1), 1);
-  }
-  
-  return roles;
+      usersCount: 3,
+      groupsCount: 1,
+      isSystemRole: true,
+      permissionGuids: [],
+    },
+    {
+      id: 2,
+      name: 'Risk Manager',
+      guid: uuidv4(),
+      alias: 'risk_manager',
+      description: 'Risk management access',
+      type: ComparisonType.Role,
+      usersCount: 10,
+      groupsCount: 2,
+      isSystemRole: false,
+      permissionGuids: [],
+    },
+    {
+      id: 3,
+      name: 'Auditor',
+      guid: uuidv4(),
+      alias: 'auditor',
+      description: 'Read-only audit access',
+      type: ComparisonType.Role,
+      usersCount: 5,
+      groupsCount: 1,
+      isSystemRole: false,
+      permissionGuids: [],
+    },
+  ];
 }
 
-// Generate mock security parameters
-export function generateSecurityParameters(modules: Module[], _isSource: boolean = true): SecurityParameter[] {
-  const params: SecurityParameter[] = [];
-  let paramId = 13000;
-  
-  for (const module of modules) {
-    params.push({
-      id: paramId++,
-      name: `${module.name} Read Access`,
+export function generateMockSecurityParameters(): SecurityParameter[] {
+  return [
+    {
+      id: 1,
+      name: 'Record-Level Security',
       guid: uuidv4(),
+      alias: 'record_level_security',
+      description: 'Record-level access control',
       type: ComparisonType.SecurityParameter,
-      securityType: 'Read',
-      moduleId: module.id,
-      moduleName: module.name,
-    });
-    
-    params.push({
-      id: paramId++,
-      name: `${module.name} Write Access`,
-      guid: uuidv4(),
-      type: ComparisonType.SecurityParameter,
-      securityType: 'Write',
-      moduleId: module.id,
-      moduleName: module.name,
-    });
-  }
-  
-  return params;
+      securityType: 'RecordPermissions',
+    },
+  ];
 }
 
-// Generate mock notifications
-export function generateNotifications(modules: Module[], _isSource: boolean = true): Notification[] {
+export function generateMockNotifications(modules: Module[]): Notification[] {
   const notifications: Notification[] = [];
-  let notifId = 14000;
-  
-  for (const module of modules.slice(0, 5)) {
+
+  for (const module of modules.slice(0, 3)) {
     notifications.push({
-      id: notifId++,
+      id: module.id,
       name: `${module.name} Alert`,
       guid: uuidv4(),
+      alias: `${module.alias}_alert`,
+      description: `Alert notification for ${module.name}`,
       type: ComparisonType.Notification,
       moduleId: module.id,
       moduleName: module.name,
-      isEnabled: randomBoolean(0.8),
-      triggerType: randomElement(['On Create', 'On Update', 'Status Change']),
+      moduleGuid: module.guid,
+      isEnabled: true,
+      triggerType: 'OnCreate',
     });
   }
-  
+
   return notifications;
 }
 
-// Generate mock data feeds
-export function generateDataFeeds(modules: Module[], _isSource: boolean = true): DataFeed[] {
-  const feeds: DataFeed[] = [];
-  let feedId = 15000;
-  
-  for (const module of modules.slice(0, 3)) {
-    feeds.push({
-      id: feedId++,
-      name: `${module.name} Import`,
+export function generateMockDataFeeds(modules: Module[]): DataFeed[] {
+  return [
+    {
+      id: 1,
+      name: 'Vulnerability Import',
       guid: uuidv4(),
+      alias: 'vulnerability_import',
+      description: 'Import vulnerability data',
       type: ComparisonType.DataFeed,
-      feedType: randomElement(['File', 'Database', 'API']),
-      targetModuleId: module.id,
-      targetModuleName: module.name,
-      isEnabled: randomBoolean(0.7),
-      schedule: randomElement(['Daily', 'Weekly', 'Monthly', 'On Demand']),
-    });
-  }
-  
-  return feeds;
+      feedType: 'Import',
+      targetModuleId: modules[0].id,
+      targetModuleName: modules[0].name,
+      targetModuleGuid: modules[0].guid,
+      isEnabled: true,
+      schedule: 'Daily at 2:00 AM',
+    },
+  ];
 }
 
-// Generate mock schedules
-export function generateSchedules(count: number = 8): Schedule[] {
-  const schedules: Schedule[] = [];
-  const types = ['Report', 'Data Feed', 'Notification', 'Calculation'];
-  
-  for (let i = 0; i < count; i++) {
-    schedules.push({
-      id: 16000 + i,
-      name: `Schedule ${i + 1}`,
+export function generateMockSchedules(): Schedule[] {
+  return [
+    {
+      id: 1,
+      name: 'Daily Report Schedule',
       guid: uuidv4(),
+      alias: 'daily_report',
+      description: 'Daily report generation',
       type: ComparisonType.Schedule,
-      scheduleType: randomElement(types),
-      frequency: randomElement(['Hourly', 'Daily', 'Weekly', 'Monthly']),
-      isEnabled: randomBoolean(0.8),
-      lastRunDate: new Date(Date.now() - randomInt(1, 30) * 24 * 60 * 60 * 1000).toISOString(),
-      nextRunDate: new Date(Date.now() + randomInt(1, 7) * 24 * 60 * 60 * 1000).toISOString(),
-    });
-  }
-  
-  return schedules;
+      scheduleType: 'Report',
+      frequency: 'Daily',
+      cronExpression: '0 6 * * *',
+      isEnabled: true,
+      lastRunDate: new Date().toISOString(),
+      nextRunDate: new Date(Date.now() + 86400000).toISOString(),
+    },
+  ];
 }
 
-// Mock connection test
-export async function testConnection(_environment: ArcherEnvironment): Promise<{ success: boolean; message: string; version?: string }> {
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, randomInt(500, 1500)));
-  
-  // Simulate random success/failure
-  if (randomBoolean(0.9)) {
-    return {
-      success: true,
-      message: 'Connection successful',
-      version: `6.${randomInt(8, 12)}.0.${randomInt(1, 5)}`,
-    };
-  } else {
-    return {
-      success: false,
-      message: 'Failed to connect: Network timeout',
-    };
-  }
+/**
+ * Generate complete mock metadata for an environment
+ */
+export function generateMockMetadata(
+  environment: ArcherEnvironment,
+  options: GenerationOptions
+): CollectedMetadata {
+  const modules = generateMockModules(options);
+  const { fields, calculatedFields } = generateMockFields(modules, options);
+  const layouts = generateMockLayouts(modules, fields);
+  const valuesLists = generateMockValuesLists(options);
+  const valuesListValues = generateMockValuesListValues(valuesLists);
+  const ddeRules = generateMockDDERules(modules, options);
+  const ddeActions = generateMockDDEActions(ddeRules);
+  const reports = generateMockReports(modules);
+  const dashboards = generateMockDashboards();
+  const workspaces = generateMockWorkspaces();
+  const iViews = generateMockIViews();
+  const roles = generateMockRoles();
+  const securityParameters = generateMockSecurityParameters();
+  const notifications = generateMockNotifications(modules);
+  const dataFeeds = generateMockDataFeeds(modules);
+  const schedules = generateMockSchedules();
+
+  return {
+    environment,
+    collectedAt: new Date().toISOString(),
+    modules,
+    fields,
+    calculatedFields,
+    layouts,
+    valuesLists,
+    valuesListValues,
+    ddeRules,
+    ddeActions,
+    reports,
+    dashboards,
+    workspaces,
+    iViews,
+    roles,
+    securityParameters,
+    notifications,
+    dataFeeds,
+    schedules,
+  };
 }

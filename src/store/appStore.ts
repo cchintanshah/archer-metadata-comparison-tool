@@ -1,169 +1,193 @@
 // ==========================================
-// App Store - Global State Management
+// Application State Store (Zustand)
 // ==========================================
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import {
   ArcherEnvironment,
   CollectionOptions,
   ComparisonResult,
   ComparisonSummary,
+  TabResults,
+  CollectedMetadata,
   getDefaultCollectionOptions,
-  createEnvironment,
-  Module,
-} from '@/types';
+  createEmptyTabResults,
+} from '../types';
 
-interface AppState {
+export interface AppState {
   // Environments
   environments: ArcherEnvironment[];
-  sourceEnvironmentId: string | null;
-  targetEnvironmentId: string | null;
+  sourceEnvironment: ArcherEnvironment | null;
+  targetEnvironment: ArcherEnvironment | null;
   
-  // Collection options
+  // Collection
   collectionOptions: CollectionOptions;
-  availableModules: Module[];
+  sourceMetadata: CollectedMetadata | null;
+  targetMetadata: CollectedMetadata | null;
   
-  // Comparison state
-  isComparing: boolean;
-  comparisonProgress: number;
-  comparisonStatus: string;
-  results: ComparisonResult[];
-  summary: ComparisonSummary | null;
+  // Comparison Results
+  comparisonResults: ComparisonResult[];
+  tabResults: TabResults;
+  comparisonSummary: ComparisonSummary | null;
   
-  // UI state
-  activeTab: 'notInTarget' | 'notInSource' | 'mismatches' | 'matched';
+  // UI State
+  isLoading: boolean;
+  loadingMessage: string;
+  loadingProgress: number;
+  error: string | null;
+  
+  // Dialogs
   showEnvironmentDialog: boolean;
   showCollectionDialog: boolean;
   editingEnvironment: ArcherEnvironment | null;
   
   // Actions
-  addEnvironment: (env: Omit<ArcherEnvironment, 'id'>) => void;
-  updateEnvironment: (id: string, env: Partial<ArcherEnvironment>) => void;
+  setEnvironments: (environments: ArcherEnvironment[]) => void;
+  addEnvironment: (environment: ArcherEnvironment) => void;
+  updateEnvironment: (environment: ArcherEnvironment) => void;
   deleteEnvironment: (id: string) => void;
-  setSourceEnvironment: (id: string | null) => void;
-  setTargetEnvironment: (id: string | null) => void;
-  setCollectionOptions: (options: Partial<CollectionOptions>) => void;
-  setAvailableModules: (modules: Module[]) => void;
-  setComparing: (comparing: boolean) => void;
-  setComparisonProgress: (progress: number, status: string) => void;
-  setResults: (results: ComparisonResult[], summary: ComparisonSummary) => void;
+  setSourceEnvironment: (environment: ArcherEnvironment | null) => void;
+  setTargetEnvironment: (environment: ArcherEnvironment | null) => void;
+  
+  setCollectionOptions: (options: CollectionOptions) => void;
+  setSourceMetadata: (metadata: CollectedMetadata | null) => void;
+  setTargetMetadata: (metadata: CollectedMetadata | null) => void;
+  
+  setComparisonResults: (results: ComparisonResult[], tabResults: TabResults, summary: ComparisonSummary) => void;
   clearResults: () => void;
-  setActiveTab: (tab: AppState['activeTab']) => void;
+  
+  setLoading: (isLoading: boolean, message?: string, progress?: number) => void;
+  setError: (error: string | null) => void;
+  
   setShowEnvironmentDialog: (show: boolean, editing?: ArcherEnvironment | null) => void;
   setShowCollectionDialog: (show: boolean) => void;
 }
 
-// Sample environments for demo
-const sampleEnvironments: ArcherEnvironment[] = [
-  {
-    id: 'env-1',
-    displayName: 'Production',
-    baseUrl: 'https://archer-prod.company.com',
-    instanceName: 'ArcherProd',
-    username: 'admin',
-    encryptedPassword: 'encrypted_password_1',
+// Default summary
+const defaultSummary: ComparisonSummary = {
+  totalItems: 0,
+  matchedCount: 0,
+  mismatchedCount: 0,
+  missingInSourceCount: 0,
+  missingInTargetCount: 0,
+  calculatedFieldStats: {
+    matched: 0,
+    mismatched: 0,
+    formulaDifferences: 0,
   },
-  {
-    id: 'env-2',
-    displayName: 'Development',
-    baseUrl: 'https://archer-dev.company.com',
-    instanceName: 'ArcherDev',
-    username: 'admin',
-    encryptedPassword: 'encrypted_password_2',
-  },
-  {
-    id: 'env-3',
-    displayName: 'UAT',
-    baseUrl: 'https://archer-uat.company.com',
-    instanceName: 'ArcherUAT',
-    username: 'admin',
-    encryptedPassword: 'encrypted_password_3',
-  },
-];
+  byType: {} as ComparisonSummary['byType'],
+};
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
-      // Initial state
-      environments: sampleEnvironments,
-      sourceEnvironmentId: null,
-      targetEnvironmentId: null,
-      collectionOptions: getDefaultCollectionOptions(),
-      availableModules: [],
-      isComparing: false,
-      comparisonProgress: 0,
-      comparisonStatus: '',
-      results: [],
-      summary: null,
-      activeTab: 'mismatches',
-      showEnvironmentDialog: false,
-      showCollectionDialog: false,
-      editingEnvironment: null,
-      
-      // Actions
-      addEnvironment: (env) => set((state) => ({
-        environments: [...state.environments, createEnvironment(env)],
-      })),
-      
-      updateEnvironment: (id, updates) => set((state) => ({
-        environments: state.environments.map((env) =>
-          env.id === id ? { ...env, ...updates } : env
-        ),
-      })),
-      
-      deleteEnvironment: (id) => set((state) => ({
-        environments: state.environments.filter((env) => env.id !== id),
-        sourceEnvironmentId: state.sourceEnvironmentId === id ? null : state.sourceEnvironmentId,
-        targetEnvironmentId: state.targetEnvironmentId === id ? null : state.targetEnvironmentId,
-      })),
-      
-      setSourceEnvironment: (id) => set({ sourceEnvironmentId: id }),
-      setTargetEnvironment: (id) => set({ targetEnvironmentId: id }),
-      
-      setCollectionOptions: (options) => set((state) => ({
-        collectionOptions: { ...state.collectionOptions, ...options },
-      })),
-      
-      setAvailableModules: (modules) => set({ availableModules: modules }),
-      
-      setComparing: (comparing) => set({ isComparing: comparing }),
-      
-      setComparisonProgress: (progress, status) => set({
-        comparisonProgress: progress,
-        comparisonStatus: status,
-      }),
-      
-      setResults: (results, summary) => set({
-        results,
-        summary,
-        isComparing: false,
-        comparisonProgress: 100,
-        comparisonStatus: 'Comparison complete',
-      }),
-      
-      clearResults: () => set({
-        results: [],
-        summary: null,
-        comparisonProgress: 0,
-        comparisonStatus: '',
-      }),
-      
-      setActiveTab: (tab) => set({ activeTab: tab }),
-      
-      setShowEnvironmentDialog: (show, editing = null) => set({
-        showEnvironmentDialog: show,
-        editingEnvironment: editing,
-      }),
-      
-      setShowCollectionDialog: (show) => set({ showCollectionDialog: show }),
-    }),
-    {
-      name: 'archer-comparison-store',
-      partialize: (state) => ({
-        environments: state.environments,
-        collectionOptions: state.collectionOptions,
-      }),
+// Load environments from localStorage
+const loadEnvironments = (): ArcherEnvironment[] => {
+  try {
+    const saved = localStorage.getItem('archer_environments');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+// Save environments to localStorage
+const saveEnvironments = (environments: ArcherEnvironment[]) => {
+  localStorage.setItem('archer_environments', JSON.stringify(environments));
+};
+
+export const useAppStore = create<AppState>((set, get) => ({
+  // Initial State
+  environments: loadEnvironments(),
+  sourceEnvironment: null,
+  targetEnvironment: null,
+  
+  collectionOptions: getDefaultCollectionOptions(),
+  sourceMetadata: null,
+  targetMetadata: null,
+  
+  comparisonResults: [],
+  tabResults: createEmptyTabResults(),
+  comparisonSummary: defaultSummary,
+  
+  isLoading: false,
+  loadingMessage: '',
+  loadingProgress: 0,
+  error: null,
+  
+  showEnvironmentDialog: false,
+  showCollectionDialog: false,
+  editingEnvironment: null,
+  
+  // Actions
+  setEnvironments: (environments) => {
+    saveEnvironments(environments);
+    set({ environments });
+  },
+  
+  addEnvironment: (environment) => {
+    const environments = [...get().environments, environment];
+    saveEnvironments(environments);
+    set({ environments });
+  },
+  
+  updateEnvironment: (environment) => {
+    const environments = get().environments.map(e => 
+      e.id === environment.id ? environment : e
+    );
+    saveEnvironments(environments);
+    set({ environments });
+  },
+  
+  deleteEnvironment: (id) => {
+    const environments = get().environments.filter(e => e.id !== id);
+    saveEnvironments(environments);
+    
+    const state = get();
+    const updates: Partial<AppState> = { environments };
+    
+    if (state.sourceEnvironment?.id === id) {
+      updates.sourceEnvironment = null;
     }
-  )
-);
+    if (state.targetEnvironment?.id === id) {
+      updates.targetEnvironment = null;
+    }
+    
+    set(updates);
+  },
+  
+  setSourceEnvironment: (environment) => set({ sourceEnvironment: environment }),
+  setTargetEnvironment: (environment) => set({ targetEnvironment: environment }),
+  
+  setCollectionOptions: (options) => set({ collectionOptions: options }),
+  setSourceMetadata: (metadata) => set({ sourceMetadata: metadata }),
+  setTargetMetadata: (metadata) => set({ targetMetadata: metadata }),
+  
+  setComparisonResults: (results, tabResults, summary) => set({ 
+    comparisonResults: results,
+    tabResults,
+    comparisonSummary: summary,
+  }),
+  
+  clearResults: () => set({ 
+    comparisonResults: [],
+    tabResults: createEmptyTabResults(),
+    comparisonSummary: defaultSummary,
+    sourceMetadata: null,
+    targetMetadata: null,
+  }),
+  
+  setLoading: (isLoading, message = '', progress = 0) => set({ 
+    isLoading, 
+    loadingMessage: message,
+    loadingProgress: progress,
+  }),
+  
+  setError: (error) => set({ error }),
+  
+  setShowEnvironmentDialog: (show, editing = null) => set({ 
+    showEnvironmentDialog: show,
+    editingEnvironment: editing,
+  }),
+  
+  setShowCollectionDialog: (show) => set({ showCollectionDialog: show }),
+}));
+
+export default useAppStore;

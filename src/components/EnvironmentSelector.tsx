@@ -2,171 +2,162 @@
 // Environment Selector Component
 // ==========================================
 
-import { Plus, Edit2, Trash2, Server } from 'lucide-react';
-import { useAppStore } from '@/store/appStore';
-import { cn } from '@/utils/cn';
+import React from 'react';
+import { useAppStore } from '../store/appStore';
+import { ArcherEnvironment } from '../types';
 
-export function EnvironmentSelector() {
+export const EnvironmentSelector: React.FC = () => {
   const {
     environments,
-    sourceEnvironmentId,
-    targetEnvironmentId,
+    sourceEnvironment,
+    targetEnvironment,
     setSourceEnvironment,
     setTargetEnvironment,
     setShowEnvironmentDialog,
     deleteEnvironment,
   } = useAppStore();
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('Are you sure you want to delete this environment?')) {
-      deleteEnvironment(id);
-    }
+  const handleSourceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    const env = environments.find(e => e.id === id) || null;
+    setSourceEnvironment(env);
   };
 
-  const handleEdit = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const env = environments.find(e => e.id === id);
-    if (env) {
-      setShowEnvironmentDialog(true, env);
+  const handleTargetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    const env = environments.find(e => e.id === id) || null;
+    setTargetEnvironment(env);
+  };
+
+  const handleEdit = (env: ArcherEnvironment) => {
+    setShowEnvironmentDialog(true, env);
+  };
+
+  const handleDelete = (env: ArcherEnvironment) => {
+    if (confirm(`Are you sure you want to delete "${env.displayName}"?`)) {
+      deleteEnvironment(env.id);
     }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <Server className="w-5 h-5 text-blue-600" />
-          Environment Selection
-        </h2>
-        <button
-          onClick={() => setShowEnvironmentDialog(true, null)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Environment
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="bg-white border-b border-gray-200 p-4">
+      <div className="flex items-center gap-8">
         {/* Source Environment */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Source Environment
           </label>
-          <div className="relative">
+          <div className="flex gap-2">
             <select
-              value={sourceEnvironmentId || ''}
-              onChange={(e) => setSourceEnvironment(e.target.value || null)}
-              className={cn(
-                "w-full px-4 py-3 bg-white border rounded-lg appearance-none cursor-pointer",
-                "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                "text-gray-900 font-medium",
-                sourceEnvironmentId ? "border-blue-300 bg-blue-50" : "border-gray-300"
-              )}
+              value={sourceEnvironment?.id || ''}
+              onChange={handleSourceChange}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Select source environment...</option>
-              {environments.map((env) => (
-                <option key={env.id} value={env.id} disabled={env.id === targetEnvironmentId}>
+              {environments.map(env => (
+                <option key={env.id} value={env.id} disabled={env.id === targetEnvironment?.id}>
                   {env.displayName}
                 </option>
               ))}
             </select>
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+            {sourceEnvironment && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handleEdit(sourceEnvironment)}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  title="Edit"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleDelete(sourceEnvironment)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded"
+                  title="Delete"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
-          {sourceEnvironmentId && (
-            <div className="mt-2 text-sm text-gray-500">
-              {environments.find(e => e.id === sourceEnvironmentId)?.baseUrl}
+          {sourceEnvironment && (
+            <div className="mt-1 text-xs text-gray-500">
+              {sourceEnvironment.baseUrl}
             </div>
           )}
+        </div>
+
+        {/* Arrow */}
+        <div className="flex items-center justify-center">
+          <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+          </svg>
         </div>
 
         {/* Target Environment */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Target Environment
           </label>
-          <div className="relative">
+          <div className="flex gap-2">
             <select
-              value={targetEnvironmentId || ''}
-              onChange={(e) => setTargetEnvironment(e.target.value || null)}
-              className={cn(
-                "w-full px-4 py-3 bg-white border rounded-lg appearance-none cursor-pointer",
-                "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                "text-gray-900 font-medium",
-                targetEnvironmentId ? "border-green-300 bg-green-50" : "border-gray-300"
-              )}
+              value={targetEnvironment?.id || ''}
+              onChange={handleTargetChange}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Select target environment...</option>
-              {environments.map((env) => (
-                <option key={env.id} value={env.id} disabled={env.id === sourceEnvironmentId}>
+              {environments.map(env => (
+                <option key={env.id} value={env.id} disabled={env.id === sourceEnvironment?.id}>
                   {env.displayName}
                 </option>
               ))}
             </select>
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+            {targetEnvironment && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handleEdit(targetEnvironment)}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  title="Edit"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleDelete(targetEnvironment)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded"
+                  title="Delete"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
-          {targetEnvironmentId && (
-            <div className="mt-2 text-sm text-gray-500">
-              {environments.find(e => e.id === targetEnvironmentId)?.baseUrl}
+          {targetEnvironment && (
+            <div className="mt-1 text-xs text-gray-500">
+              {targetEnvironment.baseUrl}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Environment Cards */}
-      {environments.length > 0 && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Configured Environments</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {environments.map((env) => (
-              <div
-                key={env.id}
-                className={cn(
-                  "p-3 rounded-lg border transition-all",
-                  env.id === sourceEnvironmentId 
-                    ? "border-blue-300 bg-blue-50" 
-                    : env.id === targetEnvironmentId
-                    ? "border-green-300 bg-green-50"
-                    : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-900 truncate">{env.displayName}</h4>
-                    <p className="text-xs text-gray-500 truncate">{env.instanceName}</p>
-                    <p className="text-xs text-gray-400 truncate mt-1">{env.baseUrl}</p>
-                  </div>
-                  <div className="flex gap-1 ml-2">
-                    <button
-                      onClick={(e) => handleEdit(env.id, e)}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDelete(env.id, e)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        {/* Add Environment Button */}
+        <button
+          onClick={() => setShowEnvironmentDialog(true, null)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          <span>Add Environment</span>
+        </button>
+      </div>
     </div>
   );
-}
+};
+
+export default EnvironmentSelector;
